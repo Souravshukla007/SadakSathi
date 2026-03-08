@@ -5,7 +5,7 @@ export default function AppFooter() {
     return (
         <footer className="bg-white pt-16 pb-8 border-t border-border-light flex-shrink-0">
             <div className="max-w-7xl mx-auto px-6">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-12 pb-12 border-b border-black border-opacity-5">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-12 pb-12 border-b border-black/5">
                     <div className="col-span-1 md:col-span-1">
                         <Link href="/" className="text-xl font-heading font-bold text-text-primary flex items-center gap-2 mb-4">
                             <span className="text-2xl">🛣️</span> PotholeVision

@@ -3,12 +3,23 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import toast, { Toaster } from "react-hot-toast";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
 
 export default function AuthPage() {
     const [activeTab, setActiveTab] = useState<"login" | "signup">("login");
     const [isVisible, setIsVisible] = useState(false);
+    const router = useRouter();
+
+    // Form states
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [firstName, setFirstName] = useState("");
+    const [lastName, setLastName] = useState("");
+    const [role, setRole] = useState("Citizen Contributor");
+    const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         // Small delay to allow initial animation on mount
@@ -18,8 +29,57 @@ export default function AuthPage() {
         return () => clearTimeout(timer);
     }, []);
 
+    const handleLogin = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+        try {
+            const res = await fetch("/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                toast.success("Login successful!");
+                router.push("/");
+                router.refresh(); // Ensure the layout picks up the new auth state
+            } else {
+                toast.error(data.message || "Login failed");
+            }
+        } catch (error) {
+            toast.error("An error occurred during login");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleSignup = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+        try {
+            const res = await fetch("/api/auth/signup", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ firstName, lastName, email, role, password }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                toast.success("Signup successful! Welcome.");
+                router.push("/");
+                router.refresh();
+            } else {
+                toast.error(data.message || "Signup failed");
+            }
+        } catch (error) {
+            toast.error("An error occurred during signup");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     return (
         <>
+            <Toaster position="top-center" />
             <AppHeader />
             <main className="flex-grow pt-16">
                 <section className="min-h-[calc(100vh-64px)] flex flex-col md:flex-row bg-white overflow-hidden">
@@ -85,45 +145,45 @@ export default function AuthPage() {
 
                             {/* Login Form */}
                             {activeTab === 'login' && (
-                                <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
+                                <form className="space-y-5" onSubmit={handleLogin}>
                                     <div className="space-y-2">
                                         <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Email Address</label>
-                                        <input type="email" placeholder="name@company.com" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none transition-all" />
+                                        <input type="email" placeholder="name@company.com" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none transition-all" value={email} onChange={(e) => setEmail(e.target.value)} required />
                                     </div>
                                     <div className="space-y-2">
                                         <div className="flex justify-between items-center">
                                             <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Password</label>
                                             <a href="#" className="text-xs text-brand-primary font-bold hover:underline">Forgot?</a>
                                         </div>
-                                        <input type="password" placeholder="••••••••" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none transition-all" />
+                                        <input type="password" placeholder="••••••••" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none transition-all" value={password} onChange={(e) => setPassword(e.target.value)} required />
                                     </div>
-                                    <button type="submit" className="w-full py-4 bg-text-primary text-white font-bold rounded-lg hover:shadow-soft transition-all active:scale-[0.98] flex items-center justify-center gap-2">
-                                        <span>Sign In</span>
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path></svg>
+                                    <button type="submit" disabled={isLoading} className="w-full py-4 bg-text-primary text-white font-bold rounded-lg hover:shadow-soft transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                                        <span>{isLoading ? "Signing In..." : "Sign In"}</span>
+                                        {!isLoading && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path></svg>}
                                     </button>
                                 </form>
                             )}
 
                             {/* Signup Form */}
                             {activeTab === 'signup' && (
-                                <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
+                                <form className="space-y-5" onSubmit={handleSignup}>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
                                             <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">First Name</label>
-                                            <input type="text" placeholder="John" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none" />
+                                            <input type="text" placeholder="John" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none" value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Last Name</label>
-                                            <input type="text" placeholder="Doe" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none" />
+                                            <input type="text" placeholder="Doe" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none" value={lastName} onChange={(e) => setLastName(e.target.value)} required />
                                         </div>
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Email</label>
-                                        <input type="email" placeholder="name@company.com" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none" />
+                                        <input type="email" placeholder="name@company.com" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none" value={email} onChange={(e) => setEmail(e.target.value)} required />
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Role</label>
-                                        <select className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none appearance-none">
+                                        <select className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none appearance-none" value={role} onChange={(e) => setRole(e.target.value)}>
                                             <option>Citizen Contributor</option>
                                             <option>City Administrator</option>
                                             <option>Maintenance Contractor</option>
@@ -131,10 +191,10 @@ export default function AuthPage() {
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Password</label>
-                                        <input type="password" placeholder="••••••••" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none" />
+                                        <input type="password" placeholder="••••••••" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none" value={password} onChange={(e) => setPassword(e.target.value)} required />
                                     </div>
-                                    <button type="submit" className="w-full py-4 bg-brand-primary text-text-primary font-bold rounded-lg hover:shadow-soft transition-all active:scale-[0.98]">
-                                        Create Account
+                                    <button type="submit" disabled={isLoading} className="w-full py-4 bg-brand-primary text-text-primary font-bold rounded-lg hover:shadow-soft transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed">
+                                        {isLoading ? "Creating Account..." : "Create Account"}
                                     </button>
                                 </form>
                             )}

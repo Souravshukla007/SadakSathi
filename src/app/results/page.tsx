@@ -81,7 +81,7 @@ export default function ResultsPage() {
                                         <div className="absolute top-[70%] left-[40%] -translate-y-full bg-green-500 text-white text-[8px] font-bold px-1 py-0.5 rounded-t-sm">CRACK #3: MINOR (78%)</div>
 
                                         {/* Analysis Status */}
-                                        <div className="absolute top-4 right-4 bg-gray-950 bg-opacity-80 backdrop-blur p-4 rounded-lg border border-white border-opacity-10 text-white">
+                                        <div className="absolute top-4 right-4 bg-gray-950/80 backdrop-blur p-4 rounded-lg border border-white/10 text-white">
                                             <div className="text-[10px] opacity-60 uppercase mb-2">Live Analysis</div>
                                             <div className="space-y-1">
                                                 <div className="flex justify-between gap-8 text-xs"><span>Detections:</span> <span className="font-bold text-brand-primary">03</span></div>

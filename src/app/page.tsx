@@ -38,7 +38,7 @@ export default function Home() {
 
                     <div className="max-w-7xl mx-auto relative z-10">
                         <div className="flex justify-center mb-10" data-animation-on-scroll="">
-                            <Link href="#" className="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-accent bg-opacity-20 rounded-lg text-sm text-text-primary hover:scale-105 transition-transform">
+                            <Link href="#" className="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-accent/20 rounded-lg text-sm text-text-primary hover:scale-105 transition-transform">
                                 <span className="font-medium">🚀 Deploying v2.4 Global Road Model</span>
                                 <ArrowRight size={16} />
                             </Link>
@@ -62,7 +62,7 @@ export default function Home() {
                                 </Link>
                                 <Link
                                     href="/upload"
-                                    className="w-full sm:w-auto px-8 py-4 bg-white text-text-primary font-medium text-sm rounded-sm border border-border-light hover:bg-black hover:bg-opacity-5 transition-all flex items-center justify-center gap-2"
+                                    className="w-full sm:w-auto px-8 py-4 bg-white text-text-primary font-medium text-sm rounded-sm border border-border-light hover:bg-black/5 transition-all flex items-center justify-center gap-2"
                                 >
                                     <Video size={20} />
                                     Upload Video
@@ -71,7 +71,7 @@ export default function Home() {
                         </div>
 
                         <div className="max-w-5xl mx-auto" data-animation-on-scroll="">
-                            <div className="bg-white bg-opacity-30 rounded-xl md:rounded-2xl p-2 md:p-3 shadow-medium">
+                            <div className="bg-white/30 rounded-xl md:rounded-2xl p-2 md:p-3 shadow-medium">
                                 <div className="aspect-video bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-lg md:rounded-xl overflow-hidden relative">
                                     <div className="bg-gray-800 px-2 md:px-4 py-2 md:py-3 flex items-center gap-2 md:gap-3 border-b border-gray-700">
                                         <div className="flex gap-1 md:gap-2">
@@ -112,13 +112,13 @@ export default function Home() {
                                             </div>
                                         </div>
 
-                                        <div className="absolute top-6 right-6 w-48 bg-gray-900 bg-opacity-80 backdrop-blur-md rounded-lg p-4 text-white space-y-3 shadow-2xl border border-white border-opacity-10 hidden sm:block">
+                                        <div className="absolute top-6 right-6 w-48 bg-gray-900/80 backdrop-blur-md rounded-lg p-4 text-white space-y-3 shadow-2xl border border-white/10 hidden sm:block">
                                             <div className="text-[10px] font-mono text-gray-400 uppercase tracking-wider">Analysis Status</div>
                                             <div className="flex items-center gap-2">
                                                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                                                 <div className="text-xs font-semibold">Active Engine</div>
                                             </div>
-                                            <div className="h-px bg-white bg-opacity-10"></div>
+                                            <div className="h-px bg-white/10"></div>
                                             <div className="space-y-2">
                                                 <div className="flex justify-between text-[10px]">
                                                     <span>Potholes</span>
@@ -135,7 +135,7 @@ export default function Home() {
                                             </div>
                                         </div>
 
-                                        <div className="absolute bottom-0 left-0 right-0 bg-gray-900 bg-opacity-90 px-4 py-2 flex items-center justify-between border-t border-white border-opacity-10">
+                                        <div className="absolute bottom-0 left-0 right-0 bg-gray-900/90 px-4 py-2 flex items-center justify-between border-t border-white/10">
                                             <div className="flex gap-4">
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-1.5 h-1.5 bg-red-500 rounded-full"></div>
@@ -145,7 +145,7 @@ export default function Home() {
                                             </div>
                                             <div className="flex gap-2">
                                                 <div className="px-2 py-1 bg-brand-primary text-gray-900 text-[9px] font-bold rounded cursor-pointer hover:opacity-80 transition-opacity">EXPORT PDF</div>
-                                                <div className="px-2 py-1 bg-white bg-opacity-10 text-white text-[9px] font-bold rounded cursor-pointer hover:bg-opacity-20 transition-opacity">GENERATE JSON</div>
+                                                <div className="px-2 py-1 bg-white/10 text-white text-[9px] font-bold rounded cursor-pointer hover:bg-white/20 transition-opacity">GENERATE JSON</div>
                                             </div>
                                         </div>
                                     </div>
@@ -182,7 +182,7 @@ export default function Home() {
                 <section className="py-24 bg-neutral-surface" id="features">
                     <div className="max-w-7xl mx-auto px-6">
                         <div className="text-center mb-16" data-animation-on-scroll="">
-                            <div className="inline-block px-3 py-1.5 bg-brand-accent bg-opacity-20 rounded text-xs font-mono font-medium text-brand-primary uppercase tracking-wide mb-4">
+                            <div className="inline-block px-3 py-1.5 bg-brand-accent/20 rounded text-xs font-mono font-medium text-brand-primary uppercase tracking-wide mb-4">
                                 Core Capabilities
                             </div>
                             <h2 className="font-heading text-4xl md:text-6xl font-normal tracking-tighter leading-tight max-w-3xl mx-auto">
@@ -192,7 +192,7 @@ export default function Home() {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                             <div className="bg-white p-8 rounded-2xl shadow-soft border border-border-light hover:border-brand-primary transition-colors group" data-animation-on-scroll="">
-                                <div className="w-12 h-12 bg-brand-primary bg-opacity-10 rounded-lg flex items-center justify-center mb-6 group-hover:bg-brand-primary transition-colors">
+                                <div className="w-12 h-12 bg-brand-primary/10 rounded-lg flex items-center justify-center mb-6 group-hover:bg-brand-primary transition-colors">
                                     <Gauge className="w-6 h-6 text-brand-primary group-hover:text-white" />
                                 </div>
                                 <h3 className="text-xl font-heading font-semibold mb-3">Real-time Analysis</h3>
@@ -200,7 +200,7 @@ export default function Home() {
                             </div>
 
                             <div className="bg-white p-8 rounded-2xl shadow-soft border border-border-light hover:border-brand-primary transition-colors group" data-animation-on-scroll="">
-                                <div className="w-12 h-12 bg-brand-primary bg-opacity-10 rounded-lg flex items-center justify-center mb-6 group-hover:bg-brand-primary transition-colors">
+                                <div className="w-12 h-12 bg-brand-primary/10 rounded-lg flex items-center justify-center mb-6 group-hover:bg-brand-primary transition-colors">
                                     <Server className="w-6 h-6 text-brand-primary group-hover:text-white" />
                                 </div>
                                 <h3 className="text-xl font-heading font-semibold mb-3">Severity Mapping</h3>
@@ -208,7 +208,7 @@ export default function Home() {
                             </div>
 
                             <div className="bg-white p-8 rounded-2xl shadow-soft border border-border-light hover:border-brand-primary transition-colors group" data-animation-on-scroll="">
-                                <div className="w-12 h-12 bg-brand-primary bg-opacity-10 rounded-lg flex items-center justify-center mb-6 group-hover:bg-brand-primary transition-colors">
+                                <div className="w-12 h-12 bg-brand-primary/10 rounded-lg flex items-center justify-center mb-6 group-hover:bg-brand-primary transition-colors">
                                     <MapPin className="w-6 h-6 text-brand-primary group-hover:text-white" />
                                 </div>
                                 <h3 className="text-xl font-heading font-semibold mb-3">GPS Geo-Tagging</h3>
@@ -222,7 +222,7 @@ export default function Home() {
                     <div className="max-w-7xl mx-auto px-6">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
                             <div data-animation-on-scroll="">
-                                <div className="inline-block px-3 py-1.5 bg-brand-accent bg-opacity-20 rounded text-xs font-mono font-medium text-brand-primary uppercase tracking-wide mb-4">
+                                <div className="inline-block px-3 py-1.5 bg-brand-accent/20 rounded text-xs font-mono font-medium text-brand-primary uppercase tracking-wide mb-4">
                                     The Process
                                 </div>
                                 <h2 className="font-heading text-4xl md:text-5xl font-normal tracking-tighter leading-tight mb-8">
@@ -255,7 +255,7 @@ export default function Home() {
                             </div>
 
                             <div className="relative" data-animation-on-scroll="">
-                                <div className="aspect-square bg-brand-secondary bg-opacity-20 rounded-3xl overflow-hidden shadow-medium flex items-center justify-center p-8">
+                                <div className="aspect-square bg-brand-secondary/20 rounded-3xl overflow-hidden shadow-medium flex items-center justify-center p-8">
                                     <div className="w-full h-full bg-white rounded-2xl shadow-2xl p-6 relative overflow-hidden">
                                         <div className="flex items-center gap-2 mb-4">
                                             <div className="w-3 h-3 rounded-full bg-red-400"></div>
