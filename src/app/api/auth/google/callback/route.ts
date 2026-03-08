@@ -68,7 +68,7 @@ export async function GET(req: Request) {
                     fullName: googleUser.name || 'Google User',
                     username: `${baseUsername}_${uniqueSuffix}`,
                     role: 'Citizen Contributor', 
-                    // Note: passwordHash is not provided since they log in via Google
+                    passwordHash: "",
                 },
             });
         }

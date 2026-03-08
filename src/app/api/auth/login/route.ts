@@ -17,6 +17,10 @@ export async function POST(req: Request) {
             return NextResponse.json({ message: 'Invalid email or password' }, { status: 401 });
         }
 
+        if (!user.passwordHash) {
+            return NextResponse.json({ message: 'Please login using Google' }, { status: 401 });
+        }
+
         const isValid = await comparePasswords(password, user.passwordHash);
         if (!isValid) {
             return NextResponse.json({ message: 'Invalid email or password' }, { status: 401 });
