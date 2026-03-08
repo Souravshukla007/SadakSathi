@@ -206,7 +206,7 @@ export default function AuthPage() {
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
-                                    <button className="flex items-center justify-center gap-3 py-3 border border-border-light rounded-lg hover:bg-white transition-all font-medium text-sm">
+                                    <button onClick={() => window.location.href = '/api/auth/google'} className="flex items-center justify-center gap-3 py-3 border border-border-light rounded-lg hover:bg-white transition-all font-medium text-sm">
                                         {/* eslint-disable-next-line @next/next/no-img-element */}
                                         <img src="https://www.google.com/favicon.ico" className="w-4 h-4" alt="Google" loading="eager" /> Google
                                     </button>
