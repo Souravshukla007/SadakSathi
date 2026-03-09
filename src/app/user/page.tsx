@@ -58,8 +58,8 @@ export default function UserDashboardPage() {
                             <div className="flex items-center gap-3 px-4 py-3 text-white opacity-70">
                                 <div className="w-8 h-8 rounded-full bg-brand-primary"></div>
                                 <div className="min-w-0">
-                                    <div className="text-xs font-bold truncate">Admin User</div>
-                                    <div className="text-[10px] opacity-60 truncate">admin@potholevision.ai</div>
+                                    <div className="text-xs font-bold truncate">Municipal User</div>
+                                    <div className="text-[10px] opacity-60 truncate">Municipal@potholevision.ai</div>
                                 </div>
                             </div>
                         </div>
@@ -70,7 +70,7 @@ export default function UserDashboardPage() {
                         <div className="max-w-7xl mx-auto">
                             {/* Top Navbar Contextual Info */}
                             <div className="flex justify-between items-center mb-10">
-                                <h1 className="text-3xl font-heading font-normal tracking-tight">Admin Dashboard</h1>
+                                <h1 className="text-3xl font-heading font-normal tracking-tight">Municipal Dashboard</h1>
                                 <div className="flex items-center gap-4">
                                     <button className="w-10 h-10 flex items-center justify-center bg-white rounded-full shadow-soft border border-border-light relative">
                                         <svg className="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
@@ -192,7 +192,7 @@ export default function UserDashboardPage() {
                                             </tr>
                                             <tr className="hover:bg-neutral-surface transition-colors">
                                                 <td className="px-8 py-5 text-sm font-mono">#PV-9910</td>
-                                                <td className="px-8 py-5 text-sm">Admin Bot</td>
+                                                <td className="px-8 py-5 text-sm">Municipal Bot</td>
                                                 <td className="px-8 py-5"><span className="px-2 py-1 bg-green-100 text-green-700 rounded text-[10px] font-bold">COMPLETED</span></td>
                                                 <td className="px-8 py-5 text-sm font-bold">14</td>
                                                 <td className="px-8 py-5 text-sm text-text-secondary">15 mins ago</td>
