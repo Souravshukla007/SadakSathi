@@ -1,9 +1,0 @@
-Loaded Prisma config from prisma.config.ts.
-
-Prisma schema loaded from prisma\schema.prisma.
-Datasource "db": PostgreSQL database "bmw", schema "public" at "ep-delicate-sound-ahxf37qk-pooler.c-3.us-east-1.aws.neon.tech"
-
-The PostgreSQL database "bmw" schema "public" at "ep-delicate-sound-ahxf37qk-pooler.c-3.us-east-1.aws.neon.tech" was successfully reset.
-
-Your database is now in sync with your Prisma schema. Done in 10.40s
-

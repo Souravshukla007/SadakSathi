@@ -1,9 +1,0 @@
-Error: 
-Invalid `prisma.user.findFirst()` invocation in
-c:\Users\Hello\OneDrive\Documents\eNivaranNextjs\test.ts:5:36
-
-  2 
-  3 async function main() {
-  4   try {
-→ 5     const user = await prisma.user.findFirst(
-

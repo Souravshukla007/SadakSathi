@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
-import AppHeader from "@/components/AppHeader";
+
 import AppFooter from "@/components/AppFooter";
 
 export default function AuthPage() {
@@ -80,9 +80,9 @@ export default function AuthPage() {
     return (
         <>
             <Toaster position="top-center" />
-            <AppHeader />
-            <main className="flex-grow pt-16">
-                <section className="min-h-[calc(100vh-64px)] flex flex-col md:flex-row bg-white overflow-hidden">
+
+            <main className="flex-grow">
+                <section className="min-h-screen flex flex-col md:flex-row bg-white overflow-hidden">
                     {/* Left Side: Illustration / Gradient */}
                     <div className="hidden md:flex md:w-1/2 bg-neutral-dark relative items-center justify-center p-12 overflow-hidden">
                         <div className="absolute inset-0 blur-gradient opacity-40"></div>
@@ -120,7 +120,7 @@ export default function AuthPage() {
                     <div className="w-full md:w-1/2 flex items-center justify-center p-6 lg:p-12 bg-neutral-surface">
                         <div className={`max-w-md w-full animate-on-scroll-hidden ${isVisible ? 'animate-on-scroll-visible' : ''}`}>
                             <div className="mb-10 text-center md:text-left">
-                                <Link href="/" className="md:hidden inline-flex items-center gap-2 mb-6 font-heading font-bold text-2xl">
+                                <Link href="/" className="inline-flex items-center gap-2 mb-6 font-heading font-bold text-2xl hover:opacity-80 transition-opacity">
                                     <span>🛣️</span> PotholeVision
                                 </Link>
                                 <h1 className="text-3xl font-heading font-bold text-text-primary mb-2">Welcome Back</h1>

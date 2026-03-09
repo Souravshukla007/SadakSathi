@@ -1,13 +1,29 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Upload, Video, Gauge, Server, MapPin } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
 
 export default function Home() {
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
+        const checkAuth = async () => {
+            try {
+                const res = await fetch('/api/auth/me');
+                if (res.ok) {
+                    setIsLoggedIn(true);
+                }
+            } catch (error) {
+                console.error(error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        checkAuth();
+    }, []);    useEffect(() => {
         const observer = new IntersectionObserver(
             (entries) => {
                 entries.forEach((entry) => {
@@ -46,10 +62,10 @@ export default function Home() {
 
                         <div className="max-w-4xl mx-auto text-center mb-12" data-animation-on-scroll="">
                             <h1 className="font-heading text-6xl md:text-7xl lg:text-8xl font-normal tracking-mega-tight leading-none mb-6">
-                                AI-Powered Pothole Detection for <span className="italic text-brand-primary">Safer Roads</span>
+                                AI-Powered Road Intelligence for <span className="italic text-brand-primary">Smart Cities</span>
                             </h1>
                             <p className="text-lg md:text-xl text-text-primary leading-relaxed max-w-2xl mx-auto mb-8">
-                                Upload road images or videos and detect potholes instantly. Real-time severity classification, geo-tagging, and automated maintenance reports.
+                                Detect potholes and traffic violations instantly using AI. Real-time monitoring, geo-tagging, automated reports, and smart enforcement tools.
                             </p>
 
                             <div className="flex flex-col sm:flex-row items-center justify-center gap-4" data-animation-on-scroll="">
@@ -163,7 +179,7 @@ export default function Home() {
                     </div>
                     <div className="w-full" style={{ WebkitMaskImage: "linear-gradient(to right, transparent, black 12.5%, black 87.5%, transparent)", maskImage: "linear-gradient(to right, transparent, black 12.5%, black 87.5%, transparent)" }}>
                         <div className="flex gap-16 items-center animate-marquee whitespace-nowrap" style={{ width: "fit-content" }}>
-                            <div className="flex items-center gap-3 px-8 text-2xl font-bold opacity-40 grayscale">CITY OF AUSTIN</div>
+                            <div className="flex items-center gap-3 px-8 text-2xl font-bold opacity-40 grayscale">TRAFFIC POLICE</div>
                             <div className="flex items-center gap-3 px-8 text-2xl font-bold opacity-40 grayscale">ROAD-TECH GLOBAL</div>
                             <div className="flex items-center gap-3 px-8 text-2xl font-bold opacity-40 grayscale">MUNICIPAL AI</div>
                             <div className="flex items-center gap-3 px-8 text-2xl font-bold opacity-40 grayscale">INFRASTRUCTURE INC</div>
@@ -218,6 +234,84 @@ export default function Home() {
                     </div>
                 </section>
 
+                <section className="py-24 bg-neutral-surface" id="traffic-detection">
+                    <div className="max-w-7xl mx-auto px-6">
+                        <div className="text-center mb-20" data-animation-on-scroll="">
+                            <h2 className="font-heading text-4xl md:text-6xl font-bold tracking-tight mb-6" data-pixel-id="jc9rv" data-pixel-kind="text">AI Traffic Violation Detection</h2>
+                            <p className="text-lg text-text-secondary max-w-2xl mx-auto" data-pixel-id="f0qo2" data-pixel-kind="text">Monitor and detect road violations with real-time computer vision tailored for modern urban governance.</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+                            {/* Card 1 */}
+                            <div className="bg-white p-8 rounded-3xl shadow-soft hover:-translate-y-2 transition-all group" data-animation-on-scroll="">
+                                <div className="w-12 h-12 bg-brand-primary/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-brand-primary transition-colors" data-pixel-id="kvwoa" data-pixel-kind="text">
+                                    <span className="text-2xl">🪖</span>
+                                </div>
+                                <h3 className="text-2xl font-heading font-bold mb-3" data-pixel-id="8xkj9" data-pixel-kind="text">No Helmet Detection</h3>
+                                <p className="text-text-secondary leading-relaxed" data-pixel-id="wfbba" data-pixel-kind="text">Identify riders without helmets instantly using high-precision headwear detection models.</p>
+                            </div>
+                            {/* Card 2 */}
+                            <div className="bg-white p-8 rounded-3xl shadow-soft hover:-translate-y-2 transition-all group" data-animation-on-scroll="">
+                                <div className="w-12 h-12 bg-brand-primary/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-brand-primary transition-colors" data-pixel-id="6868w" data-pixel-kind="text">
+                                    <span className="text-2xl">👨‍👩‍👦</span>
+                                </div>
+                                <h3 className="text-2xl font-heading font-bold mb-3" data-pixel-id="r1nsq" data-pixel-kind="text">Triple Riding Detection</h3>
+                                <p className="text-text-secondary leading-relaxed" data-pixel-id="cx0cn" data-pixel-kind="text">Detect unsafe multi-passenger riding patterns on two-wheelers automatically.</p>
+                            </div>
+                            {/* Card 3 */}
+                            <div className="bg-white p-8 rounded-3xl shadow-soft hover:-translate-y-2 transition-all group" data-animation-on-scroll="">
+                                <div className="w-12 h-12 bg-brand-primary/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-brand-primary transition-colors" data-pixel-id="gv5ra" data-pixel-kind="text">
+                                    <span className="text-2xl">🔄</span>
+                                </div>
+                                <h3 className="text-2xl font-heading font-bold mb-3" data-pixel-id="prals" data-pixel-kind="text">Wrong Side Driving</h3>
+                                <p className="text-text-secondary leading-relaxed" data-pixel-id="h3c7i" data-pixel-kind="text">Identify vehicles moving against traffic flow to prevent potential collisions in real-time.</p>
+                            </div>
+                            {/* Card 4 */}
+                            <div className="bg-white p-8 rounded-3xl shadow-soft hover:-translate-y-2 transition-all group" data-animation-on-scroll="">
+                                <div className="w-12 h-12 bg-brand-primary/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-brand-primary transition-colors" data-pixel-id="e16vc" data-pixel-kind="text">
+                                    <span className="text-2xl">🔢</span>
+                                </div>
+                                <h3 className="text-2xl font-heading font-bold mb-3" data-pixel-id="mn5l2" data-pixel-kind="text">Automatic License Plate Detection</h3>
+                                <p className="text-text-secondary leading-relaxed" data-pixel-id="drfis" data-pixel-kind="text">Extract license plate details using powerful AI OCR models for automated e-challan generation.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section className="py-24 bg-neutral-surface" id="unified-solutions">
+                    <div className="max-w-7xl mx-auto px-6">
+                        <div className="text-center mb-16" data-animation-on-scroll="">
+                            <div className="inline-block px-3 py-1.5 bg-brand-accent/20 rounded text-xs font-mono font-medium text-brand-primary uppercase tracking-wide mb-4">
+                                Unified Solutions
+                            </div>
+                            <h2 className="font-heading text-4xl md:text-5xl font-normal tracking-tighter leading-tight max-w-3xl mx-auto">
+                                Complete Civic AI Platform
+                            </h2>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div className="bg-white p-8 rounded-xl shadow-soft border border-border-light hover:border-brand-primary/30 hover:shadow-medium transition-all group" data-animation-on-scroll="">
+                                <h3 className="text-xl font-heading font-semibold mb-3 group-hover:text-brand-primary transition-colors">Pothole Detection</h3>
+                                <p className="text-text-secondary text-sm leading-relaxed mb-6">Identify bad patches and road damage instantaneously.</p>
+                                <div className="h-0.5 w-12 bg-border-light group-hover:bg-brand-primary group-hover:w-full transition-all duration-500"></div>
+                            </div>
+                            <div className="bg-white p-8 rounded-xl shadow-soft border border-border-light hover:border-brand-primary/30 hover:shadow-medium transition-all group" data-animation-on-scroll="">
+                                <h3 className="text-xl font-heading font-semibold mb-3 group-hover:text-brand-primary transition-colors">Traffic Enforcement</h3>
+                                <p className="text-text-secondary text-sm leading-relaxed mb-6">Real-time alerts for helmetless riders and wrong-driving.</p>
+                                <div className="h-0.5 w-12 bg-border-light group-hover:bg-brand-primary group-hover:w-full transition-all duration-500"></div>
+                            </div>
+                            <div className="bg-white p-8 rounded-xl shadow-soft border border-border-light hover:border-brand-primary/30 hover:shadow-medium transition-all group" data-animation-on-scroll="">
+                                <h3 className="text-xl font-heading font-semibold mb-3 group-hover:text-brand-primary transition-colors">Complaint Portal</h3>
+                                <p className="text-text-secondary text-sm leading-relaxed mb-6">Direct citizen-to-authority ticketing system linking proof.</p>
+                                <div className="h-0.5 w-12 bg-border-light group-hover:bg-brand-primary group-hover:w-full transition-all duration-500"></div>
+                            </div>
+                            <div className="bg-white p-8 rounded-xl shadow-soft border border-border-light hover:border-brand-primary/30 hover:shadow-medium transition-all group" data-animation-on-scroll="">
+                                <h3 className="text-xl font-heading font-semibold mb-3 group-hover:text-brand-primary transition-colors">Municipal Dashboard</h3>
+                                <p className="text-text-secondary text-sm leading-relaxed mb-6">Live analytics and geographic hot-spot charting for mayors.</p>
+                                <div className="h-0.5 w-12 bg-border-light group-hover:bg-brand-primary group-hover:w-full transition-all duration-500"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
                 <section className="py-24 bg-neutral-background" id="how-it-works">
                     <div className="max-w-7xl mx-auto px-6">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
@@ -465,16 +559,18 @@ export default function Home() {
                     </div>
                 </section>
 
-                <section className="py-24 hero-gradient relative overflow-hidden">
-                    <div className="absolute inset-0 blur-gradient opacity-30"></div>
-                    <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
-                        <h2 className="font-heading text-5xl md:text-7xl font-normal tracking-tighter mb-8 leading-none">Ready to start mapping?</h2>
-                        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                            <Link href="/upload" className="w-full sm:w-auto px-10 py-5 bg-text-primary text-white font-bold rounded-sm shadow-medium hover:-translate-y-1 transition-all">Upload Now</Link>
-                            <Link href="/auth" className="w-full sm:w-auto px-10 py-5 bg-white text-text-primary font-bold border border-border-light rounded-sm hover:bg-gray-50 transition-all">Create Account</Link>
+                {!isLoading && !isLoggedIn && (
+                    <section className="py-24 hero-gradient relative overflow-hidden">
+                        <div className="absolute inset-0 blur-gradient opacity-30"></div>
+                        <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
+                            <h2 className="font-heading text-5xl md:text-7xl font-normal tracking-tighter mb-8 leading-none">Ready to start mapping?</h2>
+                            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                                <Link href="/upload" className="w-full sm:w-auto px-10 py-5 bg-text-primary text-white font-bold rounded-sm shadow-medium hover:-translate-y-1 transition-all">Upload Now</Link>
+                                <Link href="/auth" className="w-full sm:w-auto px-10 py-5 bg-white text-text-primary font-bold border border-border-light rounded-sm hover:bg-gray-50 transition-all">Create Account</Link>
+                            </div>
                         </div>
-                    </div>
-                </section>
+                    </section>
+                )}
             </main>
 
             <AppFooter />
