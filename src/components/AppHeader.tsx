@@ -60,7 +60,7 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
                     {!isLoading && isLoggedIn ? (
                         <>
                             <button onClick={handleLogout} className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors">Logout</button>
-                            <Link href="/user" className="px-5 py-2.5 bg-text-primary text-white font-medium text-sm rounded-lg hover:shadow-soft transition-all hover:-translate-y-0.5">
+                            <Link href="/account" className="px-5 py-2.5 bg-text-primary text-white font-medium text-sm rounded-lg hover:shadow-soft transition-all hover:-translate-y-0.5">
                                 My Account
                             </Link>
                         </>

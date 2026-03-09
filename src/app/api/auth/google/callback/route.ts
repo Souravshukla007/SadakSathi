@@ -74,7 +74,13 @@ export async function GET(req: Request) {
         }
 
         // 5. Generate our custom JWT for the application session
-        const token = await signToken({ userId: user.id, role: user.role });
+        // NOTE: must use 'id' (not 'userId') — all API routes read payload.id
+        const token = await signToken({
+            id: user.id,
+            email: user.email,
+            fullName: user.fullName,
+            role: user.role,
+        });
 
         // 6. Redirect to the homepage with the cookie set
         const response = NextResponse.redirect(`${baseUrl}/`);
