@@ -171,10 +171,12 @@ export default function ComplaintsPage() {
                                         <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Issue Type</label>
                                         <select className="w-full px-4 py-3 rounded-lg border border-border-light outline-none focus:ring-2 focus:ring-brand-primary appearance-none bg-white">
                                             <option>Pothole</option>
-                                            <option>Broken Traffic Signal</option>
-                                            <option>Street Light Out</option>
-                                            <option>Waterlogging / Drainage</option>
-                                            <option>Illegal Parking</option>
+                                            <option>Garbage Accumulation</option>
+                                            <option>Open Manhole</option>
+                                            <option>Fallen Trees</option>
+                                            <option>No Helmet Usage</option>
+                                            <option>Triple Riding</option>
+                                            <option>Traffic Signal Violation</option>
                                         </select>
                                     </div>
 
