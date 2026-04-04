@@ -23,7 +23,11 @@ torch>=2.2.0
 torchvision>=0.17.0
 
 # --- Object Detection ---
-ultralytics>=8.1.0             # YOLO model loading & inference
+ultralytics>=8.3.0             # YOLO model loading, inference & built-in ByteTrack/BoT-SORT tracking
+lapx>=0.5.10                   # Required by Ultralytics ByteTrack (LAP assignment solver)
+
+# --- OCR (Number Plate Reading) ---
+easyocr>=1.7.0                 # Multi-language OCR for number plate text extraction
 
 # --- Duplication Detection ---
 sentence-transformers>=2.6.0   # SBERT text embeddings

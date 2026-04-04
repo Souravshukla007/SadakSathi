@@ -4,9 +4,35 @@ import React, { useEffect } from "react";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { verifyToken } from "@/lib/jwt";
 
 export default function UserDashboardPage() {
+    const router = useRouter();
+
     useEffect(() => {
+        // Check authentication and role
+        const checkAuth = async () => {
+            try {
+                const res = await fetch('/api/auth/me');
+                if (!res.ok) {
+                    router.push('/auth');
+                    return;
+                }
+                
+                const data = await res.json();
+                // Check if user has municipal access
+                if (data.role !== 'municipal' && data.role !== 'user') {
+                    router.push('/auth');
+                    return;
+                }
+            } catch (error) {
+                router.push('/auth');
+            }
+        };
+
+        checkAuth();
+
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
@@ -22,7 +48,7 @@ export default function UserDashboardPage() {
         });
 
         return () => observer.disconnect();
-    }, []);
+    }, [router]);
 
     return (
         <>

@@ -56,7 +56,7 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
                     <Link href="/" className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary rounded-md transition-colors">Home</Link>
                     <Link href="/complaints" className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary rounded-md transition-colors">Complaints</Link>
                     <Link href="/leaderboard" className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary rounded-md transition-colors">Leaderboard</Link>
-                    <Link href="/traffic-violations" className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary rounded-md transition-colors">Traffic AI</Link>
+                    <Link href="/auth" className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary rounded-md transition-colors">Traffic AI</Link>
                     <Link href="/account" className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary rounded-md transition-colors">Dashboard</Link>
                 </div>
 
@@ -95,7 +95,7 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
                     <Link href="/" className="py-3 text-sm font-medium text-text-primary border-b border-border-light" onClick={() => setMobileMenuOpen(false)}>Home</Link>
                     <Link href="/complaints" className="py-3 text-sm font-medium text-text-primary border-b border-border-light" onClick={() => setMobileMenuOpen(false)}>Complaints</Link>
                     <Link href="/leaderboard" className="py-3 text-sm font-medium text-text-primary border-b border-border-light" onClick={() => setMobileMenuOpen(false)}>Leaderboard</Link>
-                    <Link href="/traffic-violations" className="py-3 text-sm font-medium text-text-primary border-b border-border-light" onClick={() => setMobileMenuOpen(false)}>Traffic AI</Link>
+                    <Link href="/auth" className="py-3 text-sm font-medium text-text-primary border-b border-border-light" onClick={() => setMobileMenuOpen(false)}>Traffic AI</Link>
                     <Link href="/account" className="py-3 text-sm font-medium text-text-primary border-b border-border-light" onClick={() => setMobileMenuOpen(false)}>Dashboard</Link>
                     <button onClick={() => { setMobileMenuOpen(false); setShowDownloadModal(true); }} className="py-3 text-sm font-medium text-brand-primary text-left border-b border-border-light">📱 Download App</button>
                     {!isLoading && isLoggedIn ? (
