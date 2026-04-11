@@ -47,3 +47,6 @@ __pycache__/
 *.pyc
 /venv/
 backend/uploads/
+
+# model test code
+/test_image/

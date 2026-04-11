@@ -18,7 +18,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
     # --- ML Model ---
-    MODEL_PATH: str = "model.pt"  # Path to YOLO multi-class model file
+    MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "best_whole_model_nano.pt")  # Path to YOLO multi-class model file
+    TRAFFIC_MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "traffic_model_nano_worse.pt")
     CONF_THRESHOLD: float = 0.25  # Default confidence threshold for detection
     DEVICE: str = "auto"  # "auto" | "cpu" | "cuda"
 

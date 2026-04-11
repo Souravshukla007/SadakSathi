@@ -38,16 +38,30 @@ async def lifespan(app: FastAPI):
     # Ensure upload dir exists
     UPLOAD_PATH.mkdir(parents=True, exist_ok=True)
 
-    # ── Load YOLO Model ──
-    from ml.detection import load_model
+    # ── Load YOLO Models ──
+    from ml.detection import load_model as load_pothole_model
+    from ml.traffic import load_traffic_model, get_ocr
 
     device = settings.DEVICE
-    model = load_model(settings.MODEL_PATH, device=device)
+    
+    # 1. Pothole Model
+    model = load_pothole_model(settings.MODEL_PATH, device=device)
     app.state.model = model
     if model:
-        logger.info(f"✅ YOLO model loaded from: {settings.MODEL_PATH}")
+        logger.info(f"✅ Pothole YOLO model loaded from: {settings.MODEL_PATH}")
     else:
-        logger.warning(f"⚠️  YOLO model not found at: {settings.MODEL_PATH}. Detection endpoints will be unavailable.")
+        logger.warning(f"⚠️  Pothole YOLO model not found at: {settings.MODEL_PATH}.")
+
+    # 2. Traffic Model
+    traffic_model = load_traffic_model(settings.TRAFFIC_MODEL_PATH, device=device)
+    app.state.traffic_model = traffic_model
+    if traffic_model:
+        logger.info(f"✅ Traffic YOLO model loaded from: {settings.TRAFFIC_MODEL_PATH}")
+    else:
+        logger.warning(f"⚠️  Traffic YOLO model not found at: {settings.TRAFFIC_MODEL_PATH}.")
+        
+    # 3. Pre-load PaddleOCR into memory
+    get_ocr()
 
     # ── Initialize Duplicate Detector ──
     from ml.duplication import create_detector
@@ -90,10 +104,12 @@ def create_app() -> FastAPI:
     from routers.health import router as health_router
     from routers.detection import router as detection_router
     from routers.duplication import router as duplication_router
+    from routers.traffic import router as traffic_router
 
     app.include_router(health_router)
     app.include_router(detection_router)
     app.include_router(duplication_router)
+    app.include_router(traffic_router)
 
     return app
 
