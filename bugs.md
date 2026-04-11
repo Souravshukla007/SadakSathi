@@ -98,7 +98,7 @@ The second definition silently shadows the first. The old `TrafficDetectionResul
 
 ---
 
-### BUG-006: `vitest.config.ts` Deleted — Frontend Tests Cannot Run
+### ~~BUG-006: `vitest.config.ts` Deleted — Frontend Tests Cannot Run~~ ✅ FIXED
 
 **Files:** `package.json` (line 10), deleted `vitest.config.ts`
 
@@ -283,7 +283,7 @@ The `Content-Type` header is hardcoded. If any caller tries to use this utility 
 
 ## 🟢 LOW
 
-### BUG-021: Console Logs Left in Production Auth Code
+### ~~BUG-021: Console Logs Left in Production Auth Code~~ ✅ FIXED
 
 **File:** `src/app/api/auth/login/route.ts` (lines 18, 21, 24, 38)
 
@@ -293,7 +293,7 @@ The `Content-Type` header is hardcoded. If any caller tries to use this utility 
 
 ---
 
-### BUG-022: `.idea/` Directory Committed to Repository
+### ~~BUG-022: `.idea/` Directory Committed to Repository~~ ✅ FIXED
 
 **Problem:** JetBrains IDE configuration files (`.idea/`) for Android Studio are committed to the repo. These are user-specific IDE settings and shouldn't be in version control.
 
@@ -301,7 +301,7 @@ The `Content-Type` header is hardcoded. If any caller tries to use this utility 
 
 ---
 
-### BUG-023: Signup Generates Weak Random Usernames
+### ~~BUG-023: Signup Generates Weak Random Usernames~~ ✅ FIXED
 
 **File:** `src/app/api/auth/signup/route.ts` (line 25)
 
@@ -315,7 +315,7 @@ username: email.split('@')[0] + Math.random().toString(36).substring(7)
 
 ---
 
-### BUG-024: Google OAuth Username Collision Risk
+### ~~BUG-024: Google OAuth Username Collision Risk~~ ✅ FIXED
 
 **File:** `src/app/api/auth/google/callback/route.ts` (lines 62-63)
 
@@ -323,7 +323,7 @@ username: email.split('@')[0] + Math.random().toString(36).substring(7)
 
 ---
 
-### BUG-025: Frontend Test Files Import Missing Vitest Config
+### ~~BUG-025: Frontend Test Files Import Missing Vitest Config~~ ✅ FIXED
 
 **Files:** `src/lib/api-client.test.ts`, `src/lib/auth.test.ts`, `src/lib/jwt.test.ts`
 
@@ -341,6 +341,282 @@ username: email.split('@')[0] + Math.random().toString(36).substring(7)
 
 ---
 
+### BUG-027: Auth Page Leaks Debug Logs with Credentials to Browser Console
+
+**File:** `src/app/auth/page.tsx` (lines 39, 48, 55, 58, 66)
+
+**Problem:** The `handleLogin` function contains multiple `console.log` statements that output the user's email, password, authority type, and full API response to the **browser DevTools console**:
+```typescript
+console.log('🔍 Login attempt:', { email, password, authorityType });
+console.log('🔍 Login response:', { status: res.status, data });
+```
+Unlike server-side logs (which were fixed in BUG-021), these run in the **client browser** where any XSS attack or browser extension can read them.
+
+**Impact:** Credential exposure in client-side console. Passwords visible in browser DevTools.
+
+---
+
+### BUG-028: Auth Page Displays Hardcoded Credentials in the UI
+
+**File:** `src/app/auth/page.tsx` (lines 217-223)
+
+**Problem:** When a user selects "Municipal Authority" or "Traffic Authority" login mode, the page renders a literal box showing the credentials in the UI:
+```html
+<strong>Hard-coded credentials:</strong>
+Municipal: username: municipal-admin, password: municipal123
+```
+And the placeholder text on the password field is literally the password (`municipal123` / `traffic123`).
+
+**Impact:** Even without reading source code, any user who visits the auth page can see the admin credentials in the rendered UI.
+
+---
+
+### BUG-029: AppHeader Navigation Links Point to Wrong Routes
+
+**File:** `src/components/AppHeader.tsx` (lines 60-61)
+
+**Problem:** Multiple navigation links in the header point to incorrect routes:
+1. **"Traffic AI"** link → points to `/auth` (the login page) instead of `/traffic-violations` or `/dashboard/traffic`.
+2. **"Dashboard"** link (desktop) → points to `/#` (hash link, does nothing) instead of `/dashboard`.
+3. **"Dashboard"** link (mobile) → points to `/my-account` instead of `/dashboard`.
+
+**Impact:** Users clicking "Traffic AI" get redirected to the login page. Clicking "Dashboard" on desktop does nothing.
+
+---
+
+### BUG-030: `/login` and `/signup` Pages Are Empty Stubs — Orphaned Routes
+
+**Files:**
+- `src/app/login/page.tsx` — renders `<div>Login Page</div>`
+- `src/app/signup/page.tsx` — renders `<div>Signup Page</div>`
+
+**Problem:** The real auth flow lives at `/auth`, but these legacy routes exist and display empty pages. The middleware file (`src/proxy.ts`) references `/login` and `/signup` as auth routes that should redirect authenticated users, but the pages themselves are non-functional stubs.
+
+**Impact:** Users reaching `/login` or `/signup` directly see a blank page with no forms.
+
+---
+
+### BUG-031: Complaint Submit Modal Ignores Description Text and Severity Selection
+
+**File:** `src/app/complaints/page.tsx` (lines 316-319, 261-274)
+
+**Problem:** The complaint submission form has a description `<textarea>` and severity radio buttons, but:
+1. The `<textarea>` has no `value`/`onChange` binding — its contents are never captured in React state.
+2. The severity radio buttons have no `onChange` handler — the selected severity is never read.
+3. The evidence upload dropzone has **no file input** — users can't actually attach images/videos.
+
+The `handleComplaintSubmit` function only reads `issueType` and `location`, then navigates away.
+
+**Impact:** Even if the form were connected to an API, description, severity, and evidence would be lost.
+
+---
+
+### BUG-032: Prisma Schema Missing `url` in Datasource Block
+
+**File:** `prisma/schema.prisma` (lines 5-7)
+
+**Problem:**
+```prisma
+datasource db {
+  provider = "postgresql"
+}
+```
+The `url` field is missing from the datasource block. Normally this would be `url = env("DATABASE_URL")`. This works at runtime because the code uses `@prisma/adapter-pg` with a manual `pg.Pool`, which bypasses `prisma.schema`'s datasource URL. However:
+- `npx prisma migrate dev` and `npx prisma db push` **will fail** because Prisma CLI requires `url` in the datasource to connect to the database.
+- `npx prisma studio` won't work either.
+
+**Impact:** All Prisma CLI commands that require a database connection fail. Schema migrations cannot be run.
+
+---
+
+### ~~BUG-033: Backend `config.py` — `DEBUG=True` Hardcoded for Production~~ ✅ FIXED
+
+**File:** `backend/config.py` (line 15)
+
+**Problem:** `DEBUG: bool = True` is the default value. While the Settings class reads from `.env`, if no `.env` file is present in production, the backend runs with debug mode enabled by default. FastAPI in debug mode may expose stack traces and internal errors in API responses.
+
+**Impact:** Potential information disclosure in production via detailed error messages.
+
+---
+
+### ~~BUG-034: Backend `get_settings()` Creates a New `Settings` Instance Every Call~~ ✅ FIXED
+
+**File:** `backend/config.py` (lines 51-52)
+
+**Problem:**
+```python
+def get_settings() -> Settings:
+    return Settings()
+```
+Each call to `get_settings()` instantiates a new `Settings()` object, which re-reads the `.env` file from disk every time. This is called in many hot paths (every health check, every request via `UPLOAD_PATH` reference, etc.).
+
+**Impact:** Unnecessary I/O on every request. Should use `@lru_cache` or `functools.cache` as recommended by FastAPI's official docs.
+
+---
+
+### ~~BUG-035: Backend Health Endpoint Crashes Without `torch` Installed~~ ✅ FIXED
+
+**File:** `backend/routers/health.py` (line 19)
+
+**Problem:** The health check endpoint does `import torch` **inside the handler function** without a try/except. If the server is running in a lightweight deployment where `torch` isn't installed (e.g., just testing the health route), the entire endpoint crashes with an `ImportError`.
+
+**Impact:** Health probes used by load balancers / orchestrators (K8s, Docker) will fail, potentially causing restart loops.
+
+**Fix:** Move torch import to a guarded block or use the already-imported model state to determine GPU status.
+
+---
+
+### BUG-036: Prisma Schema Allows Duplicate Upvotes (No Unique Constraint)
+
+**File:** `prisma/schema.prisma` (lines 62-69)
+
+**Problem:** The `Upvote` model has no `@@unique([complaintId, userId])` constraint. While the API route (`vote/route.ts`) does a manual `findFirst` check before creating, this is a race condition: two concurrent requests from the same user can both pass the check and create duplicate upvotes.
+
+**Impact:** Users can double-upvote via concurrent requests, inflating complaint rankings. The leaderboard scoring would also be affected.
+
+**Fix:** Add `@@unique([complaintId, userId])` to the `Upvote` model.
+
+---
+
+### ~~BUG-037: GitHub Actions CI Will Fail on Backend Tests~~ ✅ FIXED
+
+**File:** `.github/workflows/tests.yml` (lines 42-47)
+
+**Problem:** The backend test job runs:
+```yaml
+pip install -r requirements.txt
+pytest backend/tests
+```
+But `requirements.txt` includes heavy ML dependencies (`torch`, `ultralytics`, `easyocr`, `sentence-transformers`, `xgboost`) that are ~5GB+ combined. On a free GitHub Actions runner with limited disk and time:
+1. Installation may timeout or run out of disk space.
+2. The test imports `ml.detection` which tries to load YOLO — this requires model `.pt` files that aren't in the repo (they're in `.gitignore`).
+3. Conftest or test setup may fail if CUDA-related libraries aren't present.
+
+**Impact:** Backend CI is effectively broken — it's extremely likely to timeout or crash.
+
+**Fix:** Create a `requirements-test.txt` with only the test/API deps (no torch/ultralytics). Mock the ML model loading in tests.
+
+---
+
+### BUG-038: GitHub OAuth Button Does Nothing — No Handler Configured
+
+**File:** `src/app/auth/page.tsx` (line 281)
+
+**Problem:** The GitHub OAuth button in the auth page renders a decorative button with no `onClick` handler:
+```tsx
+<button className="flex items-center ...">
+    <svg>...</svg> GitHub
+</button>
+```
+There is no `/api/auth/github` route, no GitHub OAuth configuration in environment variables, and no callback handler. The button looks interactive but does nothing when clicked.
+
+**Impact:** Users clicking "GitHub" login see no response. Misleading UI.
+
+---
+
+### BUG-039: `ChatThread` Schema Lacks Unique Constraint on `complaintId`
+
+**File:** `prisma/schema.prisma` (lines 92-98)
+
+**Problem:** The `ChatThread` model has a `complaintId` field but no `@unique` constraint on it. Multiple chat threads can be created for the same complaint, which makes queries for "the chat thread for complaint X" non-deterministic (which thread to use?).
+
+**Impact:** Duplicate threads can accumulate for the same complaint when the chat feature is implemented.
+
+**Fix:** Add `@unique` to `complaintId` or add `@@unique([complaintId])`.
+
+---
+
+### BUG-040: `Complaint` Model — Self-Referential `originalReportId` Has No Foreign Key
+
+**File:** `prisma/schema.prisma` (line 51)
+
+**Problem:** `originalReportId String?` is a free-text string field with no `@relation` to the `Complaint` model itself. There's no referential integrity:
+- It can point to a complaint ID that doesn't exist.
+- If the original complaint is deleted, orphaned references remain.
+- No cascading delete/nullify behavior.
+
+**Impact:** Data integrity risk when complaints are deleted or when invalid IDs are stored.
+
+---
+
+### BUG-041: `test-auth-flow.js` Shipped in Repo Root
+
+**File:** `test-auth-flow.js`
+
+**Problem:** A debugging/test script is committed at the project root. It contains hardcoded credential strings (`municipal-admin / municipal123`, `traffic-officer / traffic123`) and uses `require.main === module` CJS patterns even though the project is ESM-based.
+
+**Impact:** Credentials are duplicated in yet another file. It won't run properly with the project's module system.
+
+**Fix:** Remove from repo root or move to a `scripts/` directory and add to `.gitignore`.
+
+---
+
+### ~~BUG-042: Backend CORS Origins Too Restrictive for Production Deploy~~ ✅ FIXED
+
+**File:** `backend/config.py` (line 18)
+
+**Problem:**
+```python
+CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+```
+Only localhost origins are allowed by default. In production, when the frontend is deployed to Vercel (`*.vercel.app`) or a custom domain, all FastAPI requests from the browser will be blocked by CORS policy unless the `.env` file is correctly configured.
+
+**Impact:** Frontend-to-backend requests will silently fail in any non-localhost deployment.
+
+---
+
+### BUG-043: Signup Form Role Options Mismatch Between Frontend and Backend
+
+**Files:**
+- `src/app/auth/page.tsx` (lines 253-257) — dropdown: `"Citizen Contributor"`, `"Municipal Administrator"`, `"Traffic Department"`
+- `src/app/api/auth/signup/route.ts` (line 28) — mapping: `"City Administrator"` → `"admin"`, `"Maintenance Contractor"` → `"contractor"`, else → `"user"`
+
+**Problem:** The frontend offers roles `"Municipal Administrator"` and `"Traffic Department"`, but the backend's role mapping only recognizes `"City Administrator"` and `"Maintenance Contractor"`. A user selecting "Municipal Administrator" in the signup form will be assigned the `"user"` role because it doesn't match either backend case.
+
+**Impact:** Signup role selection is misleading — selecting "Municipal Administrator" creates a regular user, not an admin.
+
+---
+
+### BUG-044: Frontend Upload Page Uses Simulated Progress — No Real Upload
+
+**File:** `src/app/upload/page.tsx`
+
+**Problem:** The upload page shows an animated progress bar that simulates analysis progress using `setInterval`, but the actual API call to the FastAPI backend may or may not be connected. The `results` state is typed as `any` with no schema validation. If the backend responds with an unexpected shape, the UI will silently break.
+
+**Impact:** Users see a convincing progress animation but may receive no real detection results.
+
+---
+
+### BUG-045: Leaderboard Counts Upvotes *Given*, Not *Received*
+
+**File:** `src/app/api/leaderboard/route.ts` (lines 14-19, 33)
+
+**Problem:** The leaderboard query counts `_count.upvotes` — which is the number of upvotes the user has **given** (cast), not **received** on their complaints. The formula `complaints * 10 + upvotes * 5` therefore rewards users for upvoting others' complaints rather than having their own complaints upvoted.
+
+According to AGENTS.md, the scoring should be:
+> "10 pts per complaint + 5 pts per upvote"
+
+The intent is likely "5 pts per upvote received on your complaints."
+
+**Impact:** The leaderboard ranking doesn't reflect a user's contribution quality. A user who spam-upvotes others gets ranked higher.
+
+---
+
+### ~~BUG-046: Backend Module-Level `UPLOAD_PATH.mkdir()` Runs at Import Time~~ ✅ FIXED
+
+**File:** `backend/config.py` (lines 57-58)
+
+**Problem:**
+```python
+UPLOAD_PATH = BASE_DIR / get_settings().UPLOAD_DIR
+UPLOAD_PATH.mkdir(parents=True, exist_ok=True)
+```
+This code runs at module import time — every time any module imports from `config.py`, a `Settings()` is created AND a directory is created on disk. This couples import behavior to side effects. In test environments or when importing just for constants, the disk I/O is unnecessary.
+
+**Impact:** Side effects at import time. Creates directories unexpectedly during testing or when running CLI tools that import config.
+
+---
+
 ---
 
 ## Summary
@@ -348,10 +624,10 @@ username: email.split('@')[0] + Math.random().toString(36).substring(7)
 | Severity | Count |
 |----------|-------|
 | 🔴 CRITICAL | 3 |
-| 🟠 HIGH | 8 |
-| 🟡 MEDIUM | 9 |
-| 🟢 LOW | 6 |
-| **Total** | **26** |
+| 🟠 HIGH | 8 (3 fixed) |
+| 🟡 MEDIUM | 9 + 11 new = 20 |
+| 🟢 LOW | 6 (5 fixed) + 9 new = 10 |
+| **Total** | **46** |
 
 ### Priority Fix Order
 
@@ -359,7 +635,11 @@ username: email.split('@')[0] + Math.random().toString(36).substring(7)
 2. **BUG-004** — Middleware never executes (zero route protection)
 3. **BUG-003** — JWT secret fallback (production auth bypass risk)
 4. **BUG-002** — Hardcoded credentials in source
-5. **BUG-005** — Duplicate schema class name
-6. **BUG-006** — Vitest config deleted
-7. **BUG-010** — Remove unused PaddleOCR deps
-8. **BUG-007/008** — Wire up complaints page to real data
+5. **BUG-027** — Client-side credential logging
+6. **BUG-028** — Credentials displayed in UI
+7. **BUG-032** — Prisma schema missing datasource URL
+8. **BUG-036** — Upvote race condition (no unique constraint)
+9. **BUG-043** — Signup role mismatch (misleading UI)
+10. **BUG-029** — Header nav links broken
+11. **BUG-007/008/031** — Wire up complaints page to real data
+12. **BUG-045** — Leaderboard counts wrong metric

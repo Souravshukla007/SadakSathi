@@ -2,7 +2,9 @@
 SadakSathi FastAPI Backend — Configuration
 """
 
+from functools import lru_cache
 from pathlib import Path
+
 from pydantic_settings import BaseSettings
 
 
@@ -12,9 +14,11 @@ class Settings(BaseSettings):
     # --- App ---
     APP_TITLE: str = "SadakSathi ML Backend"
     APP_VERSION: str = "0.2.0"
-    DEBUG: bool = True
+    DEBUG: bool = False
 
     # --- CORS ---
+    # Override via env var for production, e.g.:
+    #   CORS_ORIGINS=["https://your-domain.vercel.app","https://custom.domain"]
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
     # --- Road Hazard Model ---
@@ -48,14 +52,15 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
+@lru_cache
 def get_settings() -> Settings:
+    """Cached settings instance — reads .env only once per process."""
     return Settings()
 
 
-# Resolved paths
+# Resolved paths (directory creation is handled in main.py lifespan, not at import time)
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_PATH = BASE_DIR / get_settings().UPLOAD_DIR
-UPLOAD_PATH.mkdir(parents=True, exist_ok=True)
 
 # ─────────────────────────────────────────────
 #  Supported Class Labels (for documentation & validation)

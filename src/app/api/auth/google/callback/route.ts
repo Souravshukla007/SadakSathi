@@ -60,7 +60,7 @@ export async function GET(req: Request) {
         if (!user) {
             // Generate a placeholder username based on the email or name
             const baseUsername = googleUser.email.split('@')[0];
-            const uniqueSuffix = Math.floor(1000 + Math.random() * 9000); // Simple uniqueness
+            const uniqueSuffix = crypto.randomUUID().slice(0, 12);
             
             user = await prisma.user.create({
                 data: {

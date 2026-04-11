@@ -50,3 +50,6 @@ backend/uploads/
 
 # model test code
 /test_image/
+
+# IDE
+.idea/

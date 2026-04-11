@@ -1,3 +1,29 @@
--r ../requirements.txt
-pytest>=8.3.0
+# ============================================
+# SadakSathi Backend — Test-Only Dependencies
+#
+# Lightweight subset for CI — does NOT include heavy ML deps
+# (torch, ultralytics, easyocr, sentence-transformers, xgboost).
+# Tests that require ML models should use pytest.skip() gracefully.
+# ============================================
+
+# --- Web Framework ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+
+# --- Settings / Env ---
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
+python-dotenv>=1.0.0
+
+# --- Image Processing (needed for schema/import resolution) ---
+opencv-python-headless>=4.9.0
+Pillow>=10.2.0
+numpy>=1.26.0
+
+# --- Geo (duplication detection tests) ---
+geopy>=2.4.0
+
+# --- Testing ---
+pytest>=8.0.0
 httpx>=0.27.0

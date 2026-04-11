@@ -1,19 +1,29 @@
+"""
+SadakSathi Backend — API Tests
+
+These tests run against the FastAPI app without requiring heavy ML dependencies.
+Tests that require ML models (torch, ultralytics, etc.) skip gracefully.
+"""
+
 import os
+
 import pytest
 from fastapi.testclient import TestClient
 
 import sys
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-backend_dir = os.path.dirname(os.path.dirname(__file__))
-sys.path.append(backend_dir)
 
-# Import the FastAPI app instance from main.py
+backend_dir = os.path.dirname(os.path.dirname(__file__))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
 from main import app
+
 
 @pytest.fixture(scope="module")
 def client():
     with TestClient(app) as c:
         yield c
+
 
 def test_health_endpoint(client):
     """Test that the application healthcheck returns 200 OK and valid structure."""
@@ -23,12 +33,17 @@ def test_health_endpoint(client):
     assert data["status"] == "ok"
     assert "model_loaded" in data
 
+
 def test_duplicate_stats_endpoint(client):
     """Test duplicate statistics endpoint."""
     response = client.get("/duplicate/stats")
+    # If the detector couldn't be created (missing ML deps), it returns 503
+    if response.status_code == 503:
+        pytest.skip("Duplicate detector not available (missing ML deps).")
     assert response.status_code == 200
     data = response.json()
     assert "total_reports" in data
+
 
 def test_duplicate_check_validation_error(client):
     """Test duplicate check strict Pydantic validation (missing location)."""
@@ -36,15 +51,18 @@ def test_duplicate_check_validation_error(client):
     response = client.post("/duplicate/check", json={"text": "massive pothole on MG Road"})
     assert response.status_code == 422
 
+
 def test_detect_image_validation_error(client):
     """Test detection endpoint payload validation (missing file)."""
     response = client.post("/detect/image")
     assert response.status_code == 422
 
+
 def test_traffic_detect_image_validation_error(client):
     """Test traffic detection endpoint payload validation (missing file)."""
     response = client.post("/detect/traffic/image")
     assert response.status_code == 422
+
 
 def test_traffic_detection_with_actual_image(client):
     """
@@ -53,7 +71,7 @@ def test_traffic_detection_with_actual_image(client):
     """
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
     image_path = os.path.join(project_root, "test_image", "road_safety_2.jpg")
-    
+
     if not os.path.exists(image_path):
         pytest.skip(f"Could not find test image: {image_path}")
 
@@ -62,22 +80,22 @@ def test_traffic_detection_with_actual_image(client):
         response = client.post(
             "/detect/traffic/image",
             files={"file": ("road_safety_2.jpg", f, "image/jpeg")},
-            data={"conf_threshold": "0.25"}
+            data={"conf_threshold": "0.25"},
         )
-    
-    # If models are not loaded (503 Service Unavailable), skip the test gracefully instead of failing
+
+    # If models are not loaded (503 Service Unavailable), skip gracefully
     if response.status_code == 503:
         pytest.skip("Traffic ML model is not loaded in backend (missing pt file). Skipping inference assertion.")
-        
+
     # Otherwise check that HTTP response was successful
     assert response.status_code == 200
-    
+
     data = response.json()
     # Confirm our Pipeline schemas matched and executed successfully
     assert data.get("success") is True
     assert "detections" in data
     assert "annotated_image_base64" in data
-    
+
     # We know previously that road_safety_2 triggered violations (TripleRiding)
     # The endpoint should return a list of detections
     assert isinstance(data["detections"], list)

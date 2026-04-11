@@ -16,7 +16,6 @@ async def health_check(request: Request):
 
     Use this endpoint to confirm the server is ready to serve detection requests.
     """
-    import torch
     from config import get_settings
 
     settings = get_settings()
@@ -26,6 +25,16 @@ async def health_check(request: Request):
     ocr_reader     = getattr(request.app.state, "ocr_reader",     None)
     detector       = getattr(request.app.state, "detector",       None)
 
+    # Guard torch import — health probes should never crash
+    gpu_available = False
+    device = "cpu"
+    try:
+        import torch
+        gpu_available = torch.cuda.is_available()
+        device = "cuda" if gpu_available else "cpu"
+    except ImportError:
+        pass
+
     return HealthResponse(
         status="ok",
         model_loaded=model is not None,
@@ -33,7 +42,7 @@ async def health_check(request: Request):
         traffic_model_loaded=traffic_model is not None,
         traffic_model_path=settings.TRAFFIC_MODEL_PATH,
         ocr_loaded=ocr_reader is not None,
-        gpu_available=torch.cuda.is_available(),
-        device="cuda" if torch.cuda.is_available() else "cpu",
+        gpu_available=gpu_available,
+        device=device,
         detector_reports=len(detector.reports_db) if detector else 0,
     )
