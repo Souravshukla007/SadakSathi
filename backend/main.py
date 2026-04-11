@@ -1,7 +1,10 @@
 """
 SadakSathi — FastAPI Backend Entry Point
 
-Multi-class road hazard detection + duplicate complaint detection.
+Dual-model road intelligence system:
+  • Road Hazard Model  — pothole, garbage, manhole, broken sign, broken street light
+  • Traffic Model      — helmet, no_helmet, number_plate, triple_riding, wrong_side_moving
+
 Run:  uvicorn main:app --reload --port 8000
 """
 
@@ -30,40 +33,59 @@ async def lifespan(app: FastAPI):
     Startup / shutdown lifecycle.
 
     On startup:
-    - Load YOLO model (if model file exists)
-    - Initialize duplicate detector
+      1. Ensure upload directory exists.
+      2. Load road hazard YOLO model (model.pt)        → app.state.model
+      3. Load traffic violation YOLO model              → app.state.traffic_model
+      4. Initialize EasyOCR reader                      → app.state.ocr_reader
+      5. Initialize duplicate complaint detector        → app.state.detector
     """
     settings = get_settings()
 
-    # Ensure upload dir exists
+    # ── 1. Upload directory ──
     UPLOAD_PATH.mkdir(parents=True, exist_ok=True)
 
-    # ── Load YOLO Models ──
-    from ml.detection import load_model as load_pothole_model
-    from ml.traffic import load_traffic_model, get_ocr
+    # ── 2. Road Hazard Model ──
+    from ml.detection import load_model
 
     device = settings.DEVICE
-    
-    # 1. Pothole Model
-    model = load_pothole_model(settings.MODEL_PATH, device=device)
+    model  = load_model(settings.MODEL_PATH, device=device)
     app.state.model = model
     if model:
-        logger.info(f"✅ Pothole YOLO model loaded from: {settings.MODEL_PATH}")
+        logger.info(f"✅ Road hazard model loaded: {settings.MODEL_PATH}")
     else:
-        logger.warning(f"⚠️  Pothole YOLO model not found at: {settings.MODEL_PATH}.")
+        logger.warning(
+            f"⚠️  Road hazard model not found at: {settings.MODEL_PATH}. "
+            "POST /detect/image and /detect/video will return HTTP 503."
+        )
 
-    # 2. Traffic Model
+    # ── 3. Traffic Violation Model ──
+    from ml.traffic import load_traffic_model
+
     traffic_model = load_traffic_model(settings.TRAFFIC_MODEL_PATH, device=device)
     app.state.traffic_model = traffic_model
     if traffic_model:
-        logger.info(f"✅ Traffic YOLO model loaded from: {settings.TRAFFIC_MODEL_PATH}")
+        logger.info(f"✅ Traffic violation model loaded: {settings.TRAFFIC_MODEL_PATH}")
     else:
-        logger.warning(f"⚠️  Traffic YOLO model not found at: {settings.TRAFFIC_MODEL_PATH}.")
-        
-    # 3. Pre-load PaddleOCR into memory
-    get_ocr()
+        logger.warning(
+            f"⚠️  Traffic model not found at: {settings.TRAFFIC_MODEL_PATH}. "
+            "POST /detect/traffic/image and /detect/traffic/video will return HTTP 503."
+        )
 
-    # ── Initialize Duplicate Detector ──
+    # ── 4. EasyOCR Reader (for number plate text extraction) ──
+    if settings.OCR_ENABLED:
+        from ml.traffic import load_ocr_reader
+
+        ocr_reader = load_ocr_reader(languages=settings.OCR_LANGUAGES)
+        app.state.ocr_reader = ocr_reader
+        if ocr_reader:
+            logger.info(f"✅ EasyOCR reader initialized (languages: {settings.OCR_LANGUAGES})")
+        else:
+            logger.warning("⚠️  EasyOCR failed to initialize — number plate text will not be extracted.")
+    else:
+        app.state.ocr_reader = None
+        logger.info("ℹ️  OCR disabled via OCR_ENABLED=false.")
+
+    # ── 5. Duplicate Complaint Detector ──
     from ml.duplication import create_detector
 
     detector = create_detector(
@@ -87,7 +109,14 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.APP_TITLE,
         version=settings.APP_VERSION,
-        description="AI-powered road hazard detection and duplicate complaint detection for SadakSathi.",
+        description=(
+            "SadakSathi AI Backend — dual-model road intelligence.\n\n"
+            "**Road Hazard Detection** (`/detect/image`, `/detect/video`):\n"
+            "Pothole · Garbage accumulation · Manhole cover · Broken sign · Broken street light · Fallen tree\n\n"
+            "**Traffic Violation Detection** (`/detect/traffic/image`, `/detect/traffic/video`):\n"
+            "Helmet compliance · Number plate + OCR · Triple riding · Wrong side moving\n\n"
+            "> ⚠️ Model endpoints return HTTP 503 when the corresponding `.pt` file is not present."
+        ),
         lifespan=lifespan,
     )
 
@@ -101,15 +130,15 @@ def create_app() -> FastAPI:
     )
 
     # ── Routers ──
-    from routers.health import router as health_router
-    from routers.detection import router as detection_router
+    from routers.health      import router as health_router
+    from routers.detection   import router as detection_router
     from routers.duplication import router as duplication_router
-    from routers.traffic import router as traffic_router
+    from routers.traffic     import router as traffic_router
 
     app.include_router(health_router)
     app.include_router(detection_router)
     app.include_router(duplication_router)
-    app.include_router(traffic_router)
+    app.include_router(traffic_router)   # NEW — traffic violation endpoints
 
     return app
 

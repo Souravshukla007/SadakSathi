@@ -4,9 +4,35 @@ import React, { useEffect } from "react";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { verifyToken } from "@/lib/jwt";
 
 export default function UserDashboardPage() {
+    const router = useRouter();
+
     useEffect(() => {
+        // Check authentication and role
+        const checkAuth = async () => {
+            try {
+                const res = await fetch('/api/auth/me', { cache: 'no-store' });
+                if (!res.ok) {
+                    router.push('/auth');
+                    return;
+                }
+                
+                const data = await res.json();
+                // Check if user has municipal access
+                if (data.role !== 'municipal' && data.role !== 'user') {
+                    router.push('/auth');
+                    return;
+                }
+            } catch (error) {
+                router.push('/auth');
+            }
+        };
+
+        checkAuth();
+
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
@@ -22,7 +48,7 @@ export default function UserDashboardPage() {
         });
 
         return () => observer.disconnect();
-    }, []);
+    }, [router]);
 
     return (
         <>
@@ -37,7 +63,7 @@ export default function UserDashboardPage() {
                             </div>
                         </div>
                         <nav className="flex-grow p-4 space-y-1">
-                            <Link href="/account" className="flex items-center gap-3 px-4 py-3 bg-brand-primary text-text-primary font-bold rounded-lg">
+                            <Link href="/my-account" className="flex items-center gap-3 px-4 py-3 bg-brand-primary text-text-primary font-bold rounded-lg">
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
                                 Dashboard
                             </Link>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import Script from "next/script";
 
 export const metadata: Metadata = {
     title: "SadakSathi | AI-Powered Road Intelligence for Smart Cities",
@@ -23,6 +24,21 @@ export default function RootLayout({
                 />
             </head>
             <body id="app-root" className="font-primary bg-neutral-background text-text-primary overflow-x-hidden min-h-screen flex flex-col">
+                <div id="google_translate_element" style={{ display: 'none' }}></div>
+                <Script id="google-translate-config" strategy="afterInteractive">
+                    {`
+                        function googleTranslateElementInit() {
+                            new window.google.translate.TranslateElement({
+                                pageLanguage: 'en',
+                                includedLanguages: 'en,hi,mr',
+                                layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE,
+                                autoDisplay: false
+                            }, 'google_translate_element');
+                        }
+                    `}
+                </Script>
+                <Script src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" strategy="afterInteractive" />
+                
                 {children}
             </body>
         </html>

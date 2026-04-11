@@ -11,6 +11,7 @@ import TrafficPreview from '@/components/traffic/TrafficPreview';
 import TrafficAnalyticsCard from '@/components/traffic/TrafficAnalyticsCard';
 import DetectionStreamTable from '@/components/traffic/DetectionStreamTable';
 import UploadAuditCard from '@/components/traffic/UploadAuditCard';
+import { useRouter as useNextRouter } from 'next/navigation';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,9 +100,26 @@ export default function TrafficDashboardPage() {
 
     // Auth check
     useEffect(() => {
-        fetch('/api/auth/me').then((res) => {
-            if (!res.ok) router.push('/auth');
-        });
+        const checkAuth = async () => {
+            try {
+                const res = await fetch('/api/auth/me');
+                if (!res.ok) {
+                    router.push('/auth');
+                    return;
+                }
+                
+                const data = await res.json();
+                // Check if user has traffic access
+                if (data.role !== 'traffic' && data.role !== 'user') {
+                    router.push('/auth');
+                    return;
+                }
+            } catch (error) {
+                router.push('/auth');
+            }
+        };
+
+        checkAuth();
     }, [router]);
 
     const handleLogout = async () => {

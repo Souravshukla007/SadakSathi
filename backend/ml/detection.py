@@ -1,14 +1,19 @@
 """
-SadakSathi — Multi-Class YOLO Detection Module
+SadakSathi — Multi-Class YOLO Road Hazard Detection Module
 
-Ported from eNivaran's pothole_detection.py.
-Enhanced for multi-class: pothole, manhole_cover, garbage, fallen_tree.
+Detects:
+  • pothole              — road surface damage
+  • garbage              — waste accumulation
+  • overflow_garbage     — overflowing waste
+  • manhole_cover        — open / displaced manhole
+  • broken_sign          — damaged road signage
+  • broken_street_light  — non-functional street lamp
+  • fallen_tree          — road obstruction
 """
 
 from __future__ import annotations
 
 import base64
-import json
 import logging
 import os
 from collections import Counter
@@ -19,6 +24,19 @@ import numpy as np
 import torch
 
 logger = logging.getLogger(__name__)
+
+# ─────────────────────────────────────────────
+#  Class-level Severity Override
+# ─────────────────────────────────────────────
+
+# For certain classes the area/depth heuristic alone under-estimates severity.
+# Override ensures these classes are never rated below the defined minimum.
+CLASS_MIN_PRIORITY: dict[str, str] = {
+    "manhole_cover":       "High",    # Open manhole is always high risk
+    "broken_sign":         "Medium",  # Damaged signage is always at least medium
+    "broken_street_light": "Medium",  # Dark road is always at least medium
+    "overflow_garbage":    "Medium",  # Overflow is always at least medium
+}
 
 # Global model instance
 _global_model = None
@@ -112,18 +130,42 @@ def estimate_depth_score(image: np.ndarray, contour: np.ndarray) -> float:
         return 0.0
 
 
-def get_detection_priority(area_ratio: float, depth_score: float) -> tuple[str, tuple[int, int, int]]:
+def get_detection_priority(
+    area_ratio: float,
+    depth_score: float,
+    class_name: str = "",
+) -> tuple[str, tuple[int, int, int]]:
     """
     Determine individual detection priority: High / Medium / Low.
+
+    Combines area ratio and depth score heuristics, then applies
+    CLASS_MIN_PRIORITY overrides so that hazardous classes like
+    manhole_cover are never rated lower than their defined minimum.
+
     Returns (priority_str, bgr_color).
     """
+    PRIORITY_ORDER = {"Low": 0, "Medium": 1, "High": 2}
+    COLOR_MAP = {
+        "High":   (0, 0, 255),    # Red
+        "Medium": (0, 165, 255),  # Orange
+        "Low":    (0, 255, 0),    # Green
+    }
+
+    # Area + depth heuristic
     combined = (0.6 * area_ratio * 100) + (0.4 * depth_score)
     if combined > 0.6 or (area_ratio > 0.01 and depth_score > 0.6):
-        return "High", (0, 0, 255)  # Red
+        computed = "High"
     elif combined > 0.3 or (area_ratio > 0.005 and depth_score > 0.4):
-        return "Medium", (0, 165, 255)  # Orange
+        computed = "Medium"
     else:
-        return "Low", (0, 255, 0)  # Green
+        computed = "Low"
+
+    # Apply class-level minimum override
+    cls_key  = class_name.lower().strip()
+    min_pri  = CLASS_MIN_PRIORITY.get(cls_key, "Low")
+    final    = computed if PRIORITY_ORDER[computed] >= PRIORITY_ORDER[min_pri] else min_pri
+
+    return final, COLOR_MAP[final]
 
 
 def determine_road_priority(
@@ -270,7 +312,7 @@ def assess_road_image(
                 area_ratio = contour_area / image_area if image_area > 0 else 0
 
                 depth_score = estimate_depth_score(image, contour)
-                priority, color = get_detection_priority(area_ratio, depth_score)
+                priority, color = get_detection_priority(area_ratio, depth_score, class_name=cls_name)
 
                 detection = {
                     "id": i,

@@ -154,3 +154,37 @@
         transform: translateY(0);
     }
 }
+
+/* Hide Google Translate UI Elements */
+html {
+    top: 0px !important;
+    height: 100% !important;
+    margin-top: 0px !important;
+}
+body { 
+    top: 0px !important; 
+    position: relative !important; 
+}
+iframe[src*="translate.googleapis.com"],
+iframe[src*="translate_a/banner"],
+iframe.goog-te-banner-frame,
+iframe.VIpgJd-ZVi9od-aZ2wEe-wOHMyf-ti6hGc,
+div.skiptranslate > iframe,
+.VIpgJd-ZVi9od-aZ2wEe-wOHMyf,
+.VIpgJd-ZVi9od-aZ2wEe-wOHMyf-ti6hGc,
+.goog-te-banner-frame.skiptranslate { 
+    display: none !important; 
+    opacity: 0 !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    width: 0 !important;
+    position: absolute !important;
+    z-index: -999 !important;
+}
+.goog-te-gadget-icon { display: none !important; }
+.goog-logo-link { display: none !important; }
+.goog-te-gadget { display: none !important; color: transparent !important; font-size: 0px !important; }
+#goog-gt-tt, .goog-te-balloon-frame { display: none !important; top: 0px !important; }
+.goog-tooltip { display: none !important; }
+.goog-tooltip:hover { display: none !important; }
+#google_translate_element { display: none !important; }

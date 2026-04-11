@@ -22,7 +22,9 @@
     "prisma": "^7.3.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "react-hot-toast": "^2.4.1"
+    "react-hot-toast": "^2.4.1",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/android": "^6.1.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -35,6 +37,7 @@
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "@capacitor/cli": "^6.1.2"
   }
 }

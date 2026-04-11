@@ -35,17 +35,17 @@ export default function AppFooter() {
                     <div>
                         <h4 className="font-heading font-bold mb-6 text-sm uppercase tracking-widest text-text-primary" data-pixel-id="6n1oh" data-pixel-kind="text">Resources</h4>
                         <ul className="space-y-3 text-sm text-text-secondary">
-                            <li data-pixel-id="uhhdp" data-pixel-kind="text"><Link href="#" className="hover:text-brand-primary transition-colors" data-pixel-id="uq0sa" data-pixel-kind="link">Whitepapers</Link></li>
-                            <li data-pixel-id="5k12e" data-pixel-kind="text"><Link href="#" className="hover:text-brand-primary transition-colors" data-pixel-id="ngz10" data-pixel-kind="link">API Docs</Link></li>
-                            <li data-pixel-id="fb4ye" data-pixel-kind="text"><Link href="#" className="hover:text-brand-primary transition-colors" data-pixel-id="oz191" data-pixel-kind="link">Case Studies</Link></li>
+                            <li data-pixel-id="uhhdp" data-pixel-kind="text"><Link href="/resources/whitepapers" className="hover:text-brand-primary transition-colors" data-pixel-id="uq0sa" data-pixel-kind="link">Whitepapers</Link></li>
+                            <li data-pixel-id="5k12e" data-pixel-kind="text"><Link href="/resources/api-docs" className="hover:text-brand-primary transition-colors" data-pixel-id="ngz10" data-pixel-kind="link">API Docs</Link></li>
+                            <li data-pixel-id="fb4ye" data-pixel-kind="text"><Link href="/resources/case-studies" className="hover:text-brand-primary transition-colors" data-pixel-id="oz191" data-pixel-kind="link">Case Studies</Link></li>
                         </ul>
                     </div>
                     <div>
                         <h4 className="font-heading font-bold mb-6 text-sm uppercase tracking-widest text-text-primary" data-pixel-id="78oz2" data-pixel-kind="text">Governance</h4>
                         <ul className="space-y-3 text-sm text-text-secondary">
-                            <li data-pixel-id="lugaq" data-pixel-kind="text"><Link href="#" className="hover:text-brand-primary transition-colors" data-pixel-id="71mn9" data-pixel-kind="link">Safety Standards</Link></li>
-                            <li data-pixel-id="8k0ls" data-pixel-kind="text"><Link href="#" className="hover:text-brand-primary transition-colors" data-pixel-id="g75w2" data-pixel-kind="link">Privacy Policy</Link></li>
-                            <li data-pixel-id="19ovr" data-pixel-kind="text"><Link href="#" className="hover:text-brand-primary transition-colors" data-pixel-id="kig7m" data-pixel-kind="link">SLA Agreements</Link></li>
+                            <li data-pixel-id="lugaq" data-pixel-kind="text"><Link href="/governance/safety-standards" className="hover:text-brand-primary transition-colors" data-pixel-id="71mn9" data-pixel-kind="link">Safety Standards</Link></li>
+                            <li data-pixel-id="8k0ls" data-pixel-kind="text"><Link href="/governance/privacy-policy" className="hover:text-brand-primary transition-colors" data-pixel-id="g75w2" data-pixel-kind="link">Privacy Policy</Link></li>
+                            <li data-pixel-id="19ovr" data-pixel-kind="text"><Link href="/governance/sla-agreements" className="hover:text-brand-primary transition-colors" data-pixel-id="kig7m" data-pixel-kind="link">SLA Agreements</Link></li>
                         </ul>
                     </div>
                 </div>

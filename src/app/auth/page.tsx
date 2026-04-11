@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -7,6 +8,7 @@ import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 
 import AppFooter from "@/components/AppFooter";
+import { AUTH_CREDENTIALS } from "@/lib/credentials";
 
 export default function AuthPage() {
     const [activeTab, setActiveTab] = useState<"login" | "signup">("login");
@@ -19,6 +21,7 @@ export default function AuthPage() {
     const [firstName, setFirstName] = useState("");
     const [lastName, setLastName] = useState("");
     const [role, setRole] = useState("Citizen Contributor");
+    const [authorityType, setAuthorityType] = useState<"citizen" | "municipal" | "traffic">("citizen");
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
@@ -33,20 +36,34 @@ export default function AuthPage() {
         e.preventDefault();
         setIsLoading(true);
         try {
+            console.log('🔍 Login attempt:', { email, password, authorityType });
+            
             const res = await fetch("/api/auth/login", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email, password }),
+                body: JSON.stringify({ email, password, authorityType }),
             });
+            
             const data = await res.json();
+            console.log('🔍 Login response:', { status: res.status, data });
+            
             if (res.ok) {
-                toast.success("Login successful!");
-                router.push("/");
-                router.refresh(); // Ensure the layout picks up the new auth state
+                toast.success(data.message || "Login successful!");
+                
+                // Handle role-based redirects
+                if (data.redirectUrl) {
+                    console.log('🚀 Redirecting to:', data.redirectUrl);
+                    window.location.href = data.redirectUrl;
+                } else {
+                    console.log('🏠 Redirecting to home');
+                    // Regular citizen login - redirect to home
+                    window.location.href = "/";
+                }
             } else {
                 toast.error(data.message || "Login failed");
             }
         } catch (error) {
+            console.error('❌ Login error:', error);
             toast.error("An error occurred during login");
         } finally {
             setIsLoading(false);
@@ -65,8 +82,7 @@ export default function AuthPage() {
             const data = await res.json();
             if (res.ok) {
                 toast.success("Signup successful! Welcome.");
-                router.push("/");
-                router.refresh();
+                window.location.href = "/";
             } else {
                 toast.error(data.message || "Signup failed");
             }
@@ -147,16 +163,67 @@ export default function AuthPage() {
                             {activeTab === 'login' && (
                                 <form className="space-y-5" onSubmit={handleLogin}>
                                     <div className="space-y-2">
-                                        <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Email Address</label>
-                                        <input type="email" placeholder="name@company.com" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none transition-all" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                                        <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Authority Type</label>
+                                        <select 
+                                            className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none appearance-none" 
+                                            value={authorityType} 
+                                            onChange={(e) => setAuthorityType(e.target.value as "citizen" | "municipal" | "traffic")}
+                                        >
+                                            <option value="citizen">Citizen Contributor</option>
+                                            <option value="municipal">Municipal Authority</option>
+                                            <option value="traffic">Traffic Authority</option>
+                                        </select>
                                     </div>
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between items-center">
-                                            <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Password</label>
-                                            <a href="#" className="text-xs text-brand-primary font-bold hover:underline">Forgot?</a>
-                                        </div>
-                                        <input type="password" placeholder="••••••••" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none transition-all" value={password} onChange={(e) => setPassword(e.target.value)} required />
-                                    </div>
+                                    
+                                    {authorityType === "citizen" ? (
+                                        <>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Email Address</label>
+                                                <input type="email" placeholder="name@company.com" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none transition-all" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between items-center">
+                                                    <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Password</label>
+                                                    <a href="#" className="text-xs text-brand-primary font-bold hover:underline">Forgot?</a>
+                                                </div>
+                                                <input type="password" placeholder="••••••••" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none transition-all" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Username</label>
+                                                <input 
+                                                    type="text" 
+                                                    placeholder={authorityType === "municipal" ? "municipal-admin" : "traffic-officer"} 
+                                                    className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none transition-all" 
+                                                    value={email} 
+                                                    onChange={(e) => setEmail(e.target.value)} 
+                                                    required 
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Password</label>
+                                                <input 
+                                                    type="password" 
+                                                    placeholder={authorityType === "municipal" ? "municipal123" : "traffic123"} 
+                                                    className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none transition-all" 
+                                                    value={password} 
+                                                    onChange={(e) => setPassword(e.target.value)} 
+                                                    required 
+                                                />
+                                            </div>
+                                            <div className="text-xs text-text-secondary bg-gray-50 p-3 rounded-lg">
+                                                <strong>Hard-coded credentials:</strong><br />
+                                                {authorityType === "municipal" ? (
+                                                    <span>Municipal: username: municipal-admin, password: municipal123</span>
+                                                ) : (
+                                                    <span>Traffic: username: traffic-officer, password: traffic123</span>
+                                                )}
+                                            </div>
+                                        </>
+                                    )}
+                                    
                                     <button type="submit" disabled={isLoading} className="w-full py-4 bg-text-primary text-white font-bold rounded-lg hover:shadow-soft transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
                                         <span>{isLoading ? "Signing In..." : "Sign In"}</span>
                                         {!isLoading && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path></svg>}

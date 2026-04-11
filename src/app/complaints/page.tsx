@@ -3,14 +3,86 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Menu, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Menu, X, MapPin, Loader2 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
 
 export default function ComplaintsPage() {
+    const router = useRouter();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isVisible, setIsVisible] = useState(false);
     const [activeFilter, setActiveFilter] = useState("All Issues");
+    const [issueType, setIssueType] = useState("Pothole");
+    
+    // Geolocation state
+    const [location, setLocation] = useState("");
+    const [isLocating, setIsLocating] = useState(false);
+    const [locationError, setLocationError] = useState("");
+
+    const handleGetLocation = () => {
+        setLocationError("");
+        if (!navigator.geolocation) {
+            setLocationError("Geolocation is not supported by your browser");
+            return;
+        }
+
+        setIsLocating(true);
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                try {
+                    const { latitude, longitude } = position.coords;
+                    // Connect to Nominatim OpenStreetMap for free reverse geocoding
+                    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+                    if (!res.ok) throw new Error("Failed to reverse geocode");
+                    
+                    const data = await res.json();
+                    if (data && data.display_name) {
+                        setLocation(data.display_name);
+                    } else {
+                        // Fallback to coordinates if address isn't found
+                        setLocation(`${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    setLocationError("Could not determine street address");
+                } finally {
+                    setIsLocating(false);
+                }
+            },
+            (error) => {
+                setIsLocating(false);
+                switch (error.code) {
+                    case error.PERMISSION_DENIED:
+                        setLocationError("Location permission denied");
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        setLocationError("Location information is unavailable");
+                        break;
+                    case error.TIMEOUT:
+                        setLocationError("The request to get user location timed out");
+                        break;
+                    default:
+                        setLocationError("An unknown error occurred");
+                        break;
+                }
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    };
+
+    const handleComplaintSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsModalOpen(false);
+        
+        const municipalIssues = ["Pothole", "Garbage Accumulation", "Open Manhole", "Fallen Trees"];
+        
+        if (municipalIssues.includes(issueType)) {
+            router.push("/Municipal");
+        } else {
+            router.push("/traffic-violations");
+        }
+    };
 
     useEffect(() => {
         // Small delay to allow initial animation on mount
@@ -166,15 +238,21 @@ export default function ComplaintsPage() {
                                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path></svg>
                                     </button>
                                 </div>
-                                <form className="p-8 space-y-5" onSubmit={(e) => { e.preventDefault(); setIsModalOpen(false); }}>
+                                <form className="p-8 space-y-5" onSubmit={handleComplaintSubmit}>
                                     <div className="space-y-2">
                                         <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Issue Type</label>
-                                        <select className="w-full px-4 py-3 rounded-lg border border-border-light outline-none focus:ring-2 focus:ring-brand-primary appearance-none bg-white">
+                                        <select 
+                                            className="w-full px-4 py-3 rounded-lg border border-border-light outline-none focus:ring-2 focus:ring-brand-primary appearance-none bg-white"
+                                            value={issueType}
+                                            onChange={(e) => setIssueType(e.target.value)}
+                                        >
                                             <option>Pothole</option>
-                                            <option>Broken Traffic Signal</option>
-                                            <option>Street Light Out</option>
-                                            <option>Waterlogging / Drainage</option>
-                                            <option>Illegal Parking</option>
+                                            <option>Garbage Accumulation</option>
+                                            <option>Open Manhole</option>
+                                            <option>Fallen Trees</option>
+                                            <option>No Helmet Usage</option>
+                                            <option>Triple Riding</option>
+                                            <option>Traffic Signal Violation</option>
                                         </select>
                                     </div>
 
@@ -201,6 +279,37 @@ export default function ComplaintsPage() {
                                         <div className="border-2 border-dashed border-border-light rounded-xl p-8 text-center hover:bg-neutral-surface transition-all cursor-pointer bg-neutral-surface/50">
                                             <svg className="w-10 h-10 mx-auto text-text-secondary mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path></svg>
                                             <p className="text-sm font-medium text-text-secondary">Drag &amp; drop photo or video</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold uppercase text-text-secondary tracking-wider flex justify-between">
+                                            Location (Address or Coordinates)
+                                            {locationError && <span className="text-red-500 normal-case">{locationError}</span>}
+                                        </label>
+                                        <div className="relative">
+                                            <input 
+                                                type="text" 
+                                                value={location}
+                                                onChange={(e) => setLocation(e.target.value)}
+                                                placeholder="e.g. 123 Main St near Central Park..." 
+                                                className={`w-full pl-4 pr-12 py-3 rounded-lg border outline-none focus:ring-2 transition-all ${
+                                                    locationError ? "border-red-300 focus:ring-red-400 bg-red-50" : "border-border-light focus:ring-brand-primary bg-white"
+                                                }`}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleGetLocation}
+                                                disabled={isLocating}
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-neutral-surface hover:bg-gray-200 text-text-secondary transition-colors"
+                                                title="Use my current GPS location"
+                                            >
+                                                {isLocating ? (
+                                                    <Loader2 className="w-5 h-5 text-brand-primary animate-spin" />
+                                                ) : (
+                                                    <MapPin className="w-5 h-5 text-brand-primary" />
+                                                )}
+                                            </button>
                                         </div>
                                     </div>
 

@@ -111,9 +111,9 @@ export default function DownloadAppModal({ open, onClose }: DownloadAppModalProp
                                 <span className="text-sm font-bold">Android</span>
                             </div>
                             <a
-                                href="#"
+                                href="/sadaksathi-app.apk"
+                                download="sadaksathi-app.apk"
                                 className="w-full text-center py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
-                                onClick={(e) => { e.preventDefault(); toast('APK download coming soon!', { icon: '📦' }); }}
                             >
                                 Download APK
                             </a>
