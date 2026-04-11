@@ -1,3 +1,12 @@
 {
+<<<<<<< HEAD
+    "python.analysis.extraPaths": [
+        "./backend"
+    ],
+    "python.autoComplete.extraPaths": [
+        "./backend"
+    ]
+=======
   "css.lint.unknownAtRules": "ignore"
+>>>>>>> d12bce26a2809c48360731afff3c4dcafb6ad4f8
 }

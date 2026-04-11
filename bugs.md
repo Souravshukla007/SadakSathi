@@ -1,518 +1,365 @@
-# 🐛 SadakSathi — Known Bugs & Issues
+# 🐛 SadakSathi — Bug Report
 
-> **Last Audited:** 2026-03-09  
-> **Source:** Static code analysis of all API routes, pages, components, and lib files.
-
----
-
-## Severity Legend
-
-| Level | Meaning |
-|---|---|
-| 🔴 **CRITICAL** | Will cause crashes, auth bypass, or data corruption |
-| 🟠 **HIGH** | Broken functionality, incorrect behavior users will encounter |
-| 🟡 **MEDIUM** | Logic issues, missing features, or degraded UX |
-| 🟢 **LOW** | Minor issues, code smells, potential future problems |
+> **Audit Date:** 2026-04-11
+> **Auditor:** @devgu + Antigravity
+> **Scope:** Full-stack audit — Next.js frontend, FastAPI backend, CI/CD, auth, ML pipeline
 
 ---
 
-## BUG-001 🔴 CRITICAL — JWT Payload Key Mismatch Between Signup and Google OAuth
+## Legend
 
-**File:** `src/app/api/auth/signup/route.ts` (L33) vs `src/app/api/auth/google/callback/route.ts` (L78)
+| Severity | Meaning |
+|----------|---------|
+| 🔴 **CRITICAL** | Security vulnerability, data loss, or app-breaking crash |
+| 🟠 **HIGH** | Feature is broken or produces incorrect results |
+| 🟡 **MEDIUM** | Functional issue, degraded UX, or maintenance hazard |
+| 🟢 **LOW** | Code smell, inconsistency, or minor cosmetic issue |
 
-**Problem:**  
-Signup creates a JWT with `{ userId: user.id, role: user.role }`, but Google OAuth creates one with `{ id: user.id, email, fullName, role }`. All downstream API routes (complaints/my, complaints/vote, account/profile, etc.) read `payload.id` — **not** `payload.userId`.
+---
 
-**Impact:**  
-Users who sign up via email/password will get a JWT where `payload.id` is **undefined**. Every authenticated API call will fail with `401 Unauthorized` for email-signup users.
+## 🔴 CRITICAL
 
-**Fix:**  
-In `signup/route.ts`, change:
-```diff
-- const token = await signToken({ userId: user.id, role: user.role });
-+ const token = await signToken({ id: user.id, email: user.email, fullName, role: user.role });
+### BUG-001: JWT Payload Key Mismatch — Signup & Login silently break all authenticated routes
+
+**Files:**
+- `src/app/api/auth/signup/route.ts` (line 33)
+- `src/app/api/auth/login/route.ts` (line 72)
+
+**Problem:** The signup and citizen login routes sign the JWT with `{ userId: user.id }`, but **every single authenticated API route** reads `payload.id` (not `payload.userId`). This means:
+- After a citizen signs up or logs in, `GET /api/complaints/my`, `POST /api/complaints/vote`, `GET /api/account/profile`, `POST /api/account/change-password`, and `POST /api/account/upload-avatar` **all return 401 Unauthorized** because `payload.id` is `undefined`.
+- Only Google OAuth callback (`src/app/api/auth/google/callback/route.ts` line 78-83) correctly signs with `{ id: user.id }`.
+
+**Impact:** Email+password signup/login is fundamentally broken for all post-auth features.
+
+**Fix:** Change `signToken({ userId: user.id, role: user.role })` → `signToken({ id: user.id, role: user.role })` in both files.
+
+---
+
+### BUG-002: Hardcoded Credentials Committed to Source Control
+
+**File:** `src/lib/credentials.ts`
+
+**Problem:** Municipal and traffic authority credentials are hardcoded in plaintext:
 ```
+municipal-admin / municipal123
+traffic-officer / traffic123
+```
+This is committed to the public GitHub repository. Anyone can log in as a municipal authority or traffic officer.
 
-**Same bug also exists in:**  
-`src/app/api/auth/login/route.ts` (L29) — uses `{ userId: user.id, role: user.role }`.
+**Impact:** Full authority-level access for anyone who reads the source code.
+
+**Fix:** Move credentials to environment variables or implement a proper admin user system backed by the database.
 
 ---
 
-## BUG-002 🔴 CRITICAL — Middleware File Named Incorrectly (`proxy.ts`)
+### BUG-003: Insecure JWT Secret Fallback in Production
+
+**File:** `src/lib/jwt.ts` (line 3)
+
+**Problem:**
+```typescript
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key-for-development';
+```
+If `JWT_SECRET` is not set in production, anyone can forge valid JWTs using the publicly-visible fallback key. There is no runtime warning or crash if the env var is missing.
+
+**Impact:** Complete authentication bypass in production if the env var isn't configured.
+
+**Fix:** Throw an error at startup if `JWT_SECRET` is not set in production.
+
+---
+
+## 🟠 HIGH
+
+### BUG-004: Middleware File Named `proxy.ts` — Never Executes
 
 **File:** `src/proxy.ts`
 
-**Problem:**  
-Next.js App Router requires middleware to be in a file named `middleware.ts` (or `.js`) at the project root or `src/` directory. The file is named `proxy.ts` and exports a function named `proxy`, not `middleware`.
+**Problem:** Next.js App Router requires the middleware file to be named `middleware.ts` (or `middleware.js`) at the project root or `src/` directory. The file is named `proxy.ts` and exports a function named `proxy` instead of the required default export named `middleware`. **This middleware never runs.** All route protection (`/dashboard`, `/admin`, `/complaints/new`, `/profile`) is completely inactive.
 
-**Impact:**  
-The middleware **never executes**. All route protection (auth checks, admin guard, redirect logic) is completely inactive. Protected pages like `/dashboard` and `/admin` are accessible without authentication.
+**Impact:** All "protected" routes are accessible without authentication. The admin role check (`payload.role !== 'admin'`) on `/admin` never fires.
 
-**Fix:**
-1. Rename `src/proxy.ts` → `src/middleware.ts`
-2. Rename the exported function from `proxy` to `middleware`
+**Fix:** Rename `src/proxy.ts` → `src/middleware.ts` and rename the exported function from `proxy` to `middleware`.
 
 ---
 
-## BUG-003 🟠 HIGH — Google OAuth Creates Users with Invalid Role Value
+### ~~BUG-005: Duplicate `TrafficAssessmentResponse` Schema Definition~~ ✅ FIXED
 
-**File:** `src/app/api/auth/google/callback/route.ts` (L70)
+**File:** `backend/models/schemas.py`
 
-**Problem:**  
-Google OAuth creates new users with `role: 'Citizen Contributor'`. However:
-- The Prisma schema has `@default("user")` for the role field.
-- Signup uses `'user'`, `'admin'`, or `'contractor'`.
-- The middleware admin check compares `role !== 'admin'`.
+**Problem:** `TrafficAssessmentResponse` is defined **twice** in the same file:
+1. Lines 29-35 — old version (used by the removed PaddleOCR flow), uses `TrafficDetectionResult` with no `overall_priority`.
+2. Lines 105-114 — new version (used by the current EasyOCR router), uses `TrafficDetection` with `overall_priority`, `priority_counts`, `class_counts`.
 
-There is no `'Citizen Contributor'` role used anywhere else in the codebase.
+The second definition silently shadows the first. The old `TrafficDetectionResult` class (lines 21-27) is now dead code — nothing imports it.
 
-**Impact:**  
-Google-authenticated users will have an inconsistent role that may cause unexpected behavior in any role-based logic.
+**Impact:** Confusing codebase; the old schema may be accidentally imported. Python will use whichever class is imported last but the file has two classes with the same name.
 
-**Fix:**
-```diff
-- role: 'Citizen Contributor',
-+ role: 'user',
-```
+**Fix:** Remove the old `TrafficAssessmentResponse` (lines 29-35) and `TrafficDetectionResult` (lines 21-27).
 
 ---
 
-## BUG-004 🟠 HIGH — Complaint Submission Modal Does NOT Submit to Backend
+### BUG-006: `vitest.config.ts` Deleted — Frontend Tests Cannot Run
 
-**File:** `src/app/complaints/page.tsx` (L169)
+**Files:** `package.json` (line 10), deleted `vitest.config.ts`
 
-**Problem:**  
-The complaint submission form's `onSubmit` handler is:
-```tsx
-onSubmit={(e) => { e.preventDefault(); setIsModalOpen(false); }}
-```
-It just closes the modal. No API call is made. No data is sent to any backend endpoint.
+**Problem:** The `package.json` still has `"test": "vitest run"`, but the `vitest.config.ts` was deleted in the latest merge. Running `npm test` will fail because vitest has no configuration file telling it where to find test files and how to resolve TypeScript paths.
 
-**Impact:**  
-Users think they've submitted a complaint, but nothing is saved. Complete data loss.
+**Impact:** Frontend CI (`npm test`) is broken. The GitHub Actions `frontend` job will fail.
 
-**Fix:**  
-Collect form data, POST to a complaint creation endpoint (needs to be created — currently no `POST /api/complaints` route exists).
+**Fix:** Recreate a `vitest.config.ts` with the correct path aliases and test file globs.
 
 ---
 
-## BUG-005 🟠 HIGH — Complaints Page Uses Entirely Hardcoded Data
+### BUG-007: Complaints Page Uses Entirely Hardcoded Data
 
-**File:** `src/app/complaints/page.tsx` (L46-62, L87-148)
+**File:** `src/app/complaints/page.tsx`
 
-**Problem:**  
-The stats section shows hardcoded values (`1,284` total issues, `452` pending, `128` in progress, `704` resolved) and the complaints grid shows three hardcoded complaint cards with Unsplash placeholder images. No data is fetched from the API.
+**Problem:** The complaints page displays 3 hardcoded complaint cards with static data (fabricated stats: "1,284 Total Issues", "452 Pending", etc.). The filter buttons and search bar are cosmetic — they don't filter anything. The page never calls `/api/complaints/feed`.
 
-**Impact:**  
-The page is purely presentational. Users see fake data, not real complaints.
+**Impact:** Users see fake data instead of real complaints from the database. Filters/search do nothing.
 
-**Fix:**  
-Fetch from `/api/complaints/feed` and compute stats from the response data.
+**Fix:** Replace the static cards with a `useEffect` fetch to `/api/complaints/feed` and render real data.
 
 ---
 
-## BUG-006 🟠 HIGH — Upload Page Simulates Progress Without Actually Uploading
+### BUG-008: Complaint Submit Modal Doesn't Actually Create a Complaint
 
-**File:** `src/app/upload/page.tsx` (L31-45)
+**File:** `src/app/complaints/page.tsx` (lines 74-85)
 
-**Problem:**  
-The `handleDropzoneClick` function simulates fake progress with `setInterval` incrementing by 5% every 150ms. No actual file is selected, no file input element exists, and no upload request is made.
+**Problem:** The "Submit Complaint" form's `onSubmit` handler just closes the modal and redirects the user to `/Municipal` or `/traffic-violations` based on issue type. It does **not** POST any data to an API. No complaint is ever created in the database. The evidence upload dropzone accepts no files. The description textarea value isn't even captured in state.
 
-The "Browse Files" button and the "Run AI Detection" link (`/results`) are both non-functional in terms of actual file handling.
-
-**Impact:**  
-Users see a fake upload animation but no file is ever uploaded or processed.
-
-**Fix:**  
-- Add a hidden `<input type="file">` element
-- Handle file selection and upload to FastAPI's detection endpoint
-- Show real progress from the upload/inference process
+**Impact:** Users think they're submitting complaints, but nothing is saved.
 
 ---
 
-## BUG-007 🟠 HIGH — Feed Search Searches by Complaint ID, Not Content
+### BUG-009: `api-client.ts` Points to Non-Existent Endpoints
 
-**File:** `src/app/api/complaints/feed/route.ts` (L33)
+**File:** `src/lib/api-client.ts` (lines 33-37)
 
-**Problem:**  
-The search filter applies `{ id: { contains: search, mode: 'insensitive' } }`. This searches the CUID complaint ID, not the description, location, or issue type.
+**Problem:** The `api` helper object defines:
+- `api.getComplaints()` → fetches `/complaints` — this endpoint doesn't exist (should be `/api/complaints/feed`)
+- `api.raiseComplaint()` → POSTs to `/complaints` — this endpoint doesn't exist (no POST handler for complaints)
 
-Additionally, `contains` on a CUID `id` field with `mode: 'insensitive'` may not work correctly with all Prisma adapters since CUIDs are case-sensitive identifiers.
-
-**Impact:**  
-The "Search" functionality in the community feed is effectively useless — no user would search by internal CUID.
-
-**Fix:**
-```diff
-- ...(search ? { id: { contains: search, mode: 'insensitive' as const } } : {}),
-+ ...(search ? {
-+   OR: [
-+     { description: { contains: search, mode: 'insensitive' as const } },
-+     { street: { contains: search, mode: 'insensitive' as const } },
-+     { city: { contains: search, mode: 'insensitive' as const } },
-+     { issueType: { contains: search, mode: 'insensitive' as const } },
-+   ]
-+ } : {}),
-```
+**Impact:** Any component using these helpers will get 404 errors.
 
 ---
 
-## BUG-008 🟠 HIGH — `/api/auth/me` Returns JWT Payload, Not User Data
+### ~~BUG-010: OCR Dependency Conflict — Both EasyOCR and PaddleOCR in `requirements.txt`~~ ✅ FIXED
 
-**File:** `src/app/api/auth/me/route.ts` (L19)
+**File:** `requirements.txt`
 
-**Problem:**  
-Returns `{ authenticated: true, user: payload }` where `payload` is the raw JWT payload (contains `iat`, `exp`, `id`, etc.). It does NOT query the database for the actual user record.
+**Problem:** The file includes both:
+- `easyocr>=1.7.0` (line 30) — what the current code actually uses (`ml/traffic.py`)
+- `paddlepaddle>=2.6.1` + `paddleocr>=2.7.3` (lines 41-42) — leftover from the previous PaddleOCR implementation that was removed
 
-**Impact:**  
-If the user's profile is updated (name, role, etc.) after login, the `/api/auth/me` response will show stale data until the user re-authenticates. Also, the payload structure differs between email signup (`userId`, `role`) and Google OAuth (`id`, `email`, `fullName`, `role`), causing inconsistent responses.
+Both packages are huge (~2GB combined). PaddleOCR is completely unused after the merge resolution.
 
-**Fix:**  
-Query the database using `payload.id` (or `payload.userId`) and return the actual user record.
+**Impact:** Massively inflated install times and disk usage. CI takes much longer than necessary. Potential version conflicts.
 
----
-
-## BUG-009 🟡 MEDIUM — Fake `reportsGenerated` Stat in Profile API
-
-**File:** `src/app/api/account/profile/route.ts` (L51)
-
-**Problem:**
-```ts
-reportsGenerated: Math.floor(complaintCount * 0.6),
-```
-This is a made-up number — just 60% of complaint count. There's no "reports generated" concept in the system.
-
-**Impact:**  
-Displays misleading fake data in the user's profile stats.
-
-**Fix:**  
-Either remove this stat or implement an actual reports feature.
+**Fix:** Remove `paddlepaddle` and `paddleocr` from `requirements.txt`.
 
 ---
 
-## BUG-010 🟡 MEDIUM — Avatar Stored as Base64 in Database
+### ~~BUG-011: `backend/requirements-test.txt` Uses Relative Path That Only Works From Root~~ ✅ FIXED
 
-**File:** `src/app/api/account/upload-avatar/route.ts` (L29)
+**File:** `backend/requirements-test.txt` (line 1)
 
-**Problem:**  
-The avatar is stored as a full base64 data URI string directly in the `profileImageUrl` column. A typical avatar image can be 500KB–2MB of base64 text.
+**Problem:** Contains `-r requirements.txt` which tries to include `./requirements.txt` relative to the file being installed. But `requirements.txt` now lives at the **project root**, not inside `backend/`. So `pip install -r backend/requirements-test.txt` fails because it resolves to `backend/requirements.txt` which doesn't exist.
 
-**Impact:**
-- Database bloat — every `SELECT` including `profileImageUrl` transfers megabytes.
-- The leaderboard endpoint (`/api/leaderboard/route.ts` L13) selects `profileImageUrl` for ALL users — could return 50 × 2MB = 100MB of JSON.
-- Performance degradation at scale.
+**Impact:** Cannot use `backend/requirements-test.txt` standalone.
 
-**Fix:**  
-Upload images to a file storage service (S3, Cloudinary, etc.) and store only the URL.
+**Fix:** Change to `-r ../requirements.txt` or inline the deps.
 
 ---
 
-## BUG-011 🟡 MEDIUM — Leaderboard Fetches Base64 Avatars for All Users
+## 🟡 MEDIUM
 
-**File:** `src/app/api/leaderboard/route.ts` (L13)
-
-**Problem:**  
-Selects `profileImageUrl: true` for all users in the leaderboard query. Combined with BUG-010, this can produce enormous JSON responses.
-
-**Impact:**  
-Extreme response payload size, slow page loads, potential browser memory issues.
-
-**Fix:**  
-Either exclude `profileImageUrl` from the select or fix BUG-010 first to use URL references.
-
----
-
-## BUG-012 🟡 MEDIUM — No Pagination on Feed or Leaderboard
-
-**File:** `src/app/api/complaints/feed/route.ts`, `src/app/api/leaderboard/route.ts`
-
-**Problem:**  
-Both endpoints return ALL matching records (feed) or top 50 (leaderboard) with no `skip`/`take`/`cursor` pagination support.
-
-**Impact:**  
-As the database grows, response times will degrade significantly. The feed could return thousands of complaints in a single response.
-
-**Fix:**  
-Add `page` and `limit` query parameters with defaults (e.g., `limit=20`).
-
----
-
-## BUG-013 🟡 MEDIUM — Vote Endpoint Only Allows Upvoting, No Unvoting
+### BUG-012: Vote Endpoint Doesn't Support Unvoting (Toggle)
 
 **File:** `src/app/api/complaints/vote/route.ts`
 
-**Problem:**  
-If a user has already voted, they get a `409 Conflict` error. There's no mechanism to remove a vote (toggle behavior).
+**Problem:** The vote endpoint only creates upvotes. If a user has already voted, it returns `409 Conflict`. There's no way to remove a vote. The frontend `VoteButton.tsx` is described as having "toggle" behavior but the API doesn't support it.
 
-**Impact:**  
-Users cannot undo accidental upvotes. The `VoteButton` component might not handle this gracefully.
-
-**Fix:**  
-Implement toggle behavior — if an upvote exists, delete it; if not, create it.
+**Impact:** Once a user upvotes, they can never undo it.
 
 ---
 
-## BUG-014 🟡 MEDIUM — Traffic Upload Endpoint Returns Mock Data
+### BUG-013: Leaderboard Rank Calculation Is Inefficient (N+1-ish)
+
+**File:** `src/app/api/account/profile/route.ts` (lines 38-43)
+
+**Problem:** To compute a user's leaderboard rank, the code groups ALL complaints by userId, sorts them, then does a `findIndex`. This entire dataset is loaded into memory for every single profile request.
+
+**Impact:** Performance degrades as complaint count grows. Each profile view triggers a full table scan and sort.
+
+---
+
+### BUG-014: Fabricated `reportsGenerated` Stat
+
+**File:** `src/app/api/account/profile/route.ts` (line 51)
+
+**Problem:**
+```typescript
+reportsGenerated: Math.floor(complaintCount * 0.6),
+```
+The "Reports Generated" stat shown on user profiles is just 60% of the complaint count — a made-up number with no basis in actual data.
+
+**Impact:** Misleading user statistics.
+
+---
+
+### BUG-015: Google OAuth Creates Users with Empty `passwordHash`
+
+**File:** `src/app/api/auth/google/callback/route.ts` (line 71)
+
+**Problem:** Google OAuth users are created with `passwordHash: ""`. This is an empty string, not `null`. If any code path (present or future) tries to verify a password for this user using `bcrypt.compare(password, "")`, the behavior is unpredictable and could allow authentication bypass.
+
+**Impact:** Potential security risk. A user signing up via Google could theoretically log in via email+password if the empty hash matches somehow.
+
+**Fix:** Set `passwordHash: null` instead of `""`, and ensure the login route checks for `null` (it already does on line 63-64).
+
+---
+
+### BUG-016: Prisma Pool Created Eagerly at Module Level — Crashes if `DATABASE_URL` Missing
+
+**File:** `src/lib/prisma.ts` (lines 5-8)
+
+**Problem:**
+```typescript
+const connectionString = `${process.env.DATABASE_URL}`;
+const pool = new Pool({ connectionString });
+```
+This runs at import time. If `DATABASE_URL` isn't set, `connectionString` becomes the string `"undefined"`, and `pg.Pool` will try to connect to a database named "undefined", causing cryptic connection errors instead of a clear missing-env-var message.
+
+**Impact:** Hard-to-debug startup failures. Misleading error messages.
+
+---
+
+### BUG-017: `package.json` Still Named `"temp-next"`
+
+**File:** `package.json` (line 2)
+
+**Problem:** `"name": "temp-next"` — the project name was never updated from its initial scaffold name.
+
+**Impact:** Cosmetic, but shows up in logs, bundle metadata, and Capacitor builds.
+
+---
+
+### BUG-018: Admin Page and Unified Detector are Empty Stubs
+
+**Files:**
+- `src/app/admin/page.tsx` — renders `<div>Admin Page</div>`
+- `src/app/unified-detector/page.tsx` — renders `<div>Unified Detector Page</div>`
+
+**Problem:** These routes are reachable by users but show blank pages with no functionality. There is no "coming soon" indicator or redirect.
+
+**Impact:** Users navigating to these pages see a broken, empty page.
+
+---
+
+### BUG-019: Traffic Upload API Route Returns Hardcoded Mock Data
 
 **File:** `src/app/api/traffic/upload/route.ts`
 
-**Problem:**  
-The entire endpoint is a placeholder that returns hardcoded mock results:
-```json
-{ "framesAnalyzed": 1200, "violationsDetected": 24, "avgConfidence": 92.4, "heatmapUrl": null }
-```
-No actual processing occurs.
+**Problem:** The entire handler returns a static mock response (`framesAnalyzed: 1200`, `violationsDetected: 24`, etc.) with no actual processing. This is the Next.js route — the real inference lives in the FastAPI backend, but the frontend traffic dashboard page may still call this dead mock endpoint.
 
-**Impact:**  
-Traffic violation detection is non-functional. The frontend shows fake results.
-
-**Fix:**  
-Connect to FastAPI backend for actual ML inference.
+**Impact:** Any traffic page relying on this Next.js route gets fake data.
 
 ---
 
-## BUG-015 🟡 MEDIUM — Traffic Endpoints Have No Authentication
+### BUG-020: `apiFetch` Always Sets `Content-Type: application/json` — Breaks File Uploads
 
-**Files:** All files in `src/app/api/traffic/*`
-
-**Problem:**  
-None of the traffic endpoints (`upload`, `detections`, `challan`, `analytics`) require authentication. Anyone can:
-- Issue challans (fines) against violations
-- View all traffic detection data
-
-**Impact:**  
-Sensitive enforcement actions (issuing fines) are publicly accessible without authorization.
-
-**Fix:**  
-Add JWT verification and role-based access control (at minimum, admin/authority roles) to `challan` and `upload` endpoints.
-
----
-
-## BUG-016 🟡 MEDIUM — `api-client.ts` Endpoints Don't Match Actual Routes
-
-**File:** `src/lib/api-client.ts` (L33-37)
-
-**Problem:**  
-The `api` object defines:
-- `api.getComplaints()` → calls `/complaints` (should be `/api/complaints/feed`)
-- `api.getLeaderboard()` → calls `/leaderboard` (should be `/api/leaderboard`)
-- `api.raiseComplaint()` → calls `POST /complaints` (no such route exists)
-
-**Impact:**  
-These client helper methods will all fail with 404 errors.
-
-**Fix:**  
-Update paths to match actual API routes:
-```diff
-- getComplaints: () => apiFetch("/complaints"),
-+ getComplaints: () => apiFetch("/api/complaints/feed"),
-- getLeaderboard: () => apiFetch("/leaderboard"),
-+ getLeaderboard: () => apiFetch("/api/leaderboard"),
-- raiseComplaint: (payload) => apiFetch("/complaints", { method: "POST", body: JSON.stringify(payload) }),
-+ raiseComplaint: (payload) => apiFetch("/api/complaints", { method: "POST", body: JSON.stringify(payload) }),
-```
-
----
-
-## BUG-017 🟡 MEDIUM — No Complaint Creation Endpoint
-
-**Missing:** `src/app/api/complaints/route.ts` (POST handler)
-
-**Problem:**  
-There is no API route to create a new complaint. The `api.raiseComplaint()` client helper and the complaint submission modal both expect one, but it doesn't exist.
-
-**Impact:**  
-It is impossible to programmatically submit a complaint. The entire core workflow is broken at the API level.
-
-**Fix:**  
-Create `src/app/api/complaints/route.ts` with a POST handler that:
-1. Validates auth
-2. Accepts `issueType`, `description`, `street`, `city`, `state`, `zipcode`, `latitude`, `longitude`, `evidenceUrl`
-3. Creates a `Complaint` record
-4. Optionally triggers ML detection and duplication check via FastAPI
-
----
-
-## BUG-018 🟡 MEDIUM — No Chat API Routes Exist
-
-**Schema:** `ChatThread` and `ChatMessage` models exist in Prisma.  
-**Component:** `ChatModal.tsx` exists in the dashboard.
-
-**Problem:**  
-There are no API routes for creating threads, sending messages, or fetching chat history. The `ChatModal` component likely makes fetch calls that will fail.
-
-**Impact:**  
-The chat feature is non-functional despite having both DB schema and frontend UI.
-
-**Fix:**  
-Create `/api/chat/thread` (GET/POST) and `/api/chat/message` (GET/POST) routes.
-
----
-
-## BUG-019 🟢 LOW — Insecure JWT Fallback Secret
-
-**File:** `src/lib/jwt.ts` (L3)
+**File:** `src/lib/api-client.ts` (line 16)
 
 **Problem:**
-```ts
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key-for-development';
+```typescript
+headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) }
 ```
-If `JWT_SECRET` is not set in production, all JWTs are signed with a known, hardcoded key.
+The `Content-Type` header is hardcoded. If any caller tries to use this utility for `FormData` / file uploads, the browser won't set the correct `multipart/form-data` boundary, and the request will fail.
 
-**Impact:**  
-In production without `JWT_SECRET` set, anyone can forge valid JWTs and impersonate any user.
-
-**Fix:**  
-Throw an error if `JWT_SECRET` is not set in production:
-```ts
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
-    throw new Error('JWT_SECRET must be set in production');
-}
-```
+**Impact:** The api-client utility cannot be used for file uploads without explicitly overriding headers.
 
 ---
 
-## BUG-020 🟢 LOW — Signup Uses Inconsistent bcrypt Salt Rounds
+## 🟢 LOW
 
-**Files:**  
-- `src/lib/auth.ts` (L4) — uses salt rounds `10`
-- `src/app/api/account/change-password/route.ts` (L39) — uses salt rounds `12`
+### BUG-021: Console Logs Left in Production Auth Code
 
-**Problem:**  
-The `hashPassword` utility uses 10 rounds, but the change-password endpoint uses `bcrypt.hash(newPassword, 12)` directly, bypassing the utility function entirely.
+**File:** `src/app/api/auth/login/route.ts` (lines 18, 21, 24, 38)
 
-**Impact:**  
-Minor inconsistency. Both are valid, but using different salt rounds means different performance characteristics for initial signup vs password change.
+**Problem:** Debug `console.log` statements with emoji (`🔍`, `❌`, `🚀`) are left in the authority login path. These log credentials and tokens to stdout.
 
-**Fix:**  
-Use the `hashPassword` utility in the change-password route:
-```diff
-- const newHash = await bcrypt.hash(newPassword, 12);
-+ const newHash = await hashPassword(newPassword);
-```
+**Impact:** Credential leakage in server logs.
 
 ---
 
-## BUG-021 🟢 LOW — Google OAuth Sets Empty String as `passwordHash`
+### BUG-022: `.idea/` Directory Committed to Repository
 
-**File:** `src/app/api/auth/google/callback/route.ts` (L71)
+**Problem:** JetBrains IDE configuration files (`.idea/`) for Android Studio are committed to the repo. These are user-specific IDE settings and shouldn't be in version control.
+
+**Fix:** Add `.idea/` to `.gitignore` and remove from tracking.
+
+---
+
+### BUG-023: Signup Generates Weak Random Usernames
+
+**File:** `src/app/api/auth/signup/route.ts` (line 25)
 
 **Problem:**
-```ts
-passwordHash: "",
+```typescript
+username: email.split('@')[0] + Math.random().toString(36).substring(7)
 ```
-Google OAuth users are created with an empty string password hash instead of `null`. The login route checks `if (!user.passwordHash)` — but an empty string `""` is **falsy** in JavaScript, so this happens to work. However, it's semantically wrong and fragile.
+`Math.random().toString(36).substring(7)` produces only 4-5 random characters. With enough signups, username collisions are likely and will cause Prisma unique constraint errors (500 Internal Server Error).
 
-**Impact:**  
-Currently works by coincidence. If any code changes to check `=== null`, Google users could theoretically "login" with any password via bcrypt comparing against an empty hash.
-
-**Fix:**  
-Use `null` explicitly:
-```diff
-- passwordHash: "",
-+ passwordHash: null,
-```
+**Fix:** Use `crypto.randomUUID()` or a longer random suffix.
 
 ---
 
-## BUG-022 🟢 LOW — Leaderboard `upvotes` Count Is Actually "Upvotes Cast BY User", Not "Received"
+### BUG-024: Google OAuth Username Collision Risk
 
-**File:** `src/app/api/leaderboard/route.ts` (L16-18)
+**File:** `src/app/api/auth/google/callback/route.ts` (lines 62-63)
 
-**Problem:**  
-The Prisma query counts `_count.upvotes` on the `User` model. Based on the schema, `User.upvotes` is the relation of upvotes **cast by** the user, not upvotes **received on** their complaints.
-
-**Impact:**  
-Leaderboard points from upvotes reward users for upvoting others, not for having their reports upvoted. This misaligns the incentive structure.
-
-**Fix:**  
-To count upvotes received, aggregate upvotes on the user's complaints instead:
-```ts
-const upvotesReceived = await prisma.upvote.count({
-    where: { complaint: { userId: user.id } }
-});
-```
+**Problem:** Same issue as BUG-023: `Math.floor(1000 + Math.random() * 9000)` produces only 4-digit suffixes (1000-9999). With >9000 Google users sharing the same email prefix, username collisions will cause 500 errors.
 
 ---
 
-## BUG-023 🟢 LOW — Profile Leaderboard Rank Off-By-One for New Users
+### BUG-025: Frontend Test Files Import Missing Vitest Config
 
-**File:** `src/app/api/account/profile/route.ts` (L50)
+**Files:** `src/lib/api-client.test.ts`, `src/lib/auth.test.ts`, `src/lib/jwt.test.ts`
 
-**Problem:**
-```ts
-const rank = usersRanked.findIndex((u) => u.userId === userId) + 1;
-```
-If the user has zero complaints, they won't appear in the `groupBy` result. `findIndex` returns `-1`, so `rank` becomes `0`. The fallback on L50 is `rank || 1`, which shows them as rank 1.
+**Problem:** Test files exist next to source files but `vitest.config.ts` was deleted (see BUG-006). These tests reference vitest APIs that won't resolve.
 
-**Impact:**  
-Users with zero complaints are shown as "Rank #1" on the leaderboard, which is misleading.
-
-**Fix:**
-```diff
-- leaderboardRank: rank || 1,
-+ leaderboardRank: rank > 0 ? rank : null, // or "Unranked"
-```
+**Impact:** `npm test` fails completely.
 
 ---
 
-## BUG-024 🟢 LOW — Complaints Page Filter Buttons Do Nothing
+### ~~BUG-026: `backend/check_imports.py` — Orphaned Utility Script~~ ✅ FIXED
 
-**File:** `src/app/complaints/page.tsx` (L66-77)
+**File:** `backend/check_imports.py`
 
-**Problem:**  
-The filter buttons (`All Issues`, `Pending`, `Resolved`) update `activeFilter` state, but this state is never used to filter the displayed cards — because the cards are hardcoded HTML, not rendered from data.
-
-**Impact:**  
-Filters appear clickable but have no effect.
-
-**Fix:**  
-Wire up filters when dynamic data fetching is implemented (after fixing BUG-005).
+**Problem:** This debugging script was added by the other contributor and left in the repo. It's a development-only utility and shouldn't be in the production codebase.
 
 ---
 
-## BUG-025 🟢 LOW — Complaints Page Search Input Does Nothing
-
-**File:** `src/app/complaints/page.tsx` (L80)
-
-**Problem:**  
-The search input has no `onChange` handler, no state binding, and no search logic.
-
-**Impact:**  
-Users can type in the search box with no result.
-
-**Fix:**  
-Wire up to a search handler when dynamic data is implemented.
-
 ---
 
-## Summary Table
+## Summary
 
-| Bug ID | Severity | Area | One-liner |
-|---|---|---|---|
-| BUG-001 | 🔴 CRITICAL | Auth | JWT payload uses `userId` in signup/login, but all routes expect `id` |
-| BUG-002 | 🔴 CRITICAL | Middleware | File named `proxy.ts` instead of `middleware.ts` — never executes |
-| BUG-003 | 🟠 HIGH | Auth | Google OAuth uses non-standard role `'Citizen Contributor'` |
-| BUG-004 | 🟠 HIGH | Complaints | Submit modal doesn't actually submit data |
-| BUG-005 | 🟠 HIGH | Complaints | Complaints page shows entirely hardcoded data |
-| BUG-006 | 🟠 HIGH | Upload | Upload page simulates progress with no real file handling |
-| BUG-007 | 🟠 HIGH | Complaints | Feed search operates on complaint ID, not description/location |
-| BUG-008 | 🟠 HIGH | Auth | `/api/auth/me` returns JWT payload, not DB user data |
-| BUG-009 | 🟡 MEDIUM | Account | `reportsGenerated` stat is a fake formula (60% of complaints) |
-| BUG-010 | 🟡 MEDIUM | Account | Avatar stored as multi-MB base64 string in database |
-| BUG-011 | 🟡 MEDIUM | Leaderboard | Fetches base64 avatars for all users (massive response) |
-| BUG-012 | 🟡 MEDIUM | API | No pagination on feed or leaderboard endpoints |
-| BUG-013 | 🟡 MEDIUM | Complaints | No unvote mechanism (toggle upvote not supported) |
-| BUG-014 | 🟡 MEDIUM | Traffic | Upload endpoint returns hardcoded mock data |
-| BUG-015 | 🟡 MEDIUM | Traffic | No authentication on traffic endpoints (challan issuance is public) |
-| BUG-016 | 🟡 MEDIUM | Client | `api-client.ts` paths don't match actual API routes |
-| BUG-017 | 🟡 MEDIUM | API | No POST endpoint exists for creating complaints |
-| BUG-018 | 🟡 MEDIUM | Chat | Chat schema + UI exist but no API routes |
-| BUG-019 | 🟢 LOW | Security | JWT uses hardcoded fallback secret |
-| BUG-020 | 🟢 LOW | Auth | Inconsistent bcrypt salt rounds (10 vs 12) |
-| BUG-021 | 🟢 LOW | Auth | Google OAuth sets `passwordHash: ""` instead of `null` |
-| BUG-022 | 🟢 LOW | Leaderboard | Upvotes count is "cast by" user, not "received on" complaints |
-| BUG-023 | 🟢 LOW | Account | Zero-complaint users shown as Rank #1 |
-| BUG-024 | 🟢 LOW | UI | Complaint filter buttons don't filter anything |
-| BUG-025 | 🟢 LOW | UI | Complaint search input has no handler |
+| Severity | Count |
+|----------|-------|
+| 🔴 CRITICAL | 3 |
+| 🟠 HIGH | 8 |
+| 🟡 MEDIUM | 9 |
+| 🟢 LOW | 6 |
+| **Total** | **26** |
+
+### Priority Fix Order
+
+1. **BUG-001** — JWT key mismatch (signup/login broken for citizens)
+2. **BUG-004** — Middleware never executes (zero route protection)
+3. **BUG-003** — JWT secret fallback (production auth bypass risk)
+4. **BUG-002** — Hardcoded credentials in source
+5. **BUG-005** — Duplicate schema class name
+6. **BUG-006** — Vitest config deleted
+7. **BUG-010** — Remove unused PaddleOCR deps
+8. **BUG-007/008** — Wire up complaints page to real data
