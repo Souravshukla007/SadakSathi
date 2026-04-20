@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     TRACKER: str = "bytetrack.yaml"
 
     # --- OCR (Number Plate Reading) ---
-    OCR_ENABLED: bool = True
+    OCR_ENABLED: bool = False   # Disabled: easyocr excluded from Render build (python-bidi Rust issue)
     OCR_LANGUAGES: list[str] = ["en"]  # EasyOCR language codes
 
     # --- Duplication Detection ---
