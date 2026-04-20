@@ -421,25 +421,41 @@ def assess_road_video(
         frames_analyzed = 0
         frame_idx = 0
 
+        # For best-frame capture: track frame with most detections
+        best_frame_det_count = -1
+        best_annotated_frame: np.ndarray | None = None
+
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
 
             if frame_idx % sample_rate == 0:
-                result, _ = assess_road_image(
-                    frame, model, conf_threshold=conf_threshold, device=device, return_annotated=False
+                result, annotated_frame = assess_road_image(
+                    frame, model, conf_threshold=conf_threshold, device=device, return_annotated=True
                 )
                 if result.get("success") and result.get("detections"):
+                    det_count = len(result["detections"])
                     for det in result["detections"]:
                         det["frame_index"] = frame_idx
                         det["timestamp_sec"] = round(frame_idx / fps, 2)
                     all_detections.extend(result["detections"])
+
+                    # Keep track of the richest annotated frame
+                    if det_count > best_frame_det_count and annotated_frame is not None:
+                        best_frame_det_count = det_count
+                        best_annotated_frame = annotated_frame.copy()
+
                 frames_analyzed += 1
 
             frame_idx += 1
 
         cap.release()
+
+        # Encode best frame to base64
+        annotated_b64: str | None = None
+        if best_annotated_frame is not None:
+            annotated_b64 = encode_image_to_base64(best_annotated_frame)
 
         # Build summary
         class_counts: dict[str, int] = {}
@@ -450,11 +466,24 @@ def assess_road_video(
             class_counts[cls] = class_counts.get(cls, 0) + 1
             priority_counts[pri] = priority_counts.get(pri, 0) + 1
 
+        # Derive overall road priority from aggregated counts
+        high = priority_counts.get("High", 0)
+        medium = priority_counts.get("Medium", 0)
+        if high >= 2 or (high >= 1 and medium >= 2):
+            road_priority = "High"
+        elif high >= 1 or medium >= 2:
+            road_priority = "Medium"
+        else:
+            road_priority = "Low"
+
         return {
             "success": True,
             "total_frames_analyzed": frames_analyzed,
             "total_frames": total_frames,
             "total_detections": len(all_detections),
+            "road_priority": road_priority,
+            "priority_counts": priority_counts,
+            "annotated_image_base64": annotated_b64,
             "summary": {
                 "class_counts": class_counts,
                 "priority_counts": priority_counts,

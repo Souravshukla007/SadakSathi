@@ -44,6 +44,9 @@ export interface VideoAssessmentResponse {
   success: boolean;
   total_frames_analyzed: number;
   total_detections: number;
+  road_priority: string;
+  priority_counts: Record<string, number>;
+  annotated_image_base64: string | null;
   summary: Record<string, unknown>;
   message: string;
 }
@@ -217,6 +220,23 @@ export interface StoredDetection {
   mediaType: "image" | "video";
   fileName: string;
   result: ImageAssessmentResponse | VideoAssessmentResponse | TrafficAssessmentResponse | TrafficVideoAssessmentResponse;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  In-memory blob URL store
+//  Blob URLs are tab-local and can't be serialized to sessionStorage.
+//  This module-level variable survives Next.js client-side navigation within
+//  the same browser tab so /results can play the video uploaded on /upload.
+// ─────────────────────────────────────────────────────────────────────────────
+
+let _lastVideoBlobUrl: string | null = null;
+
+export function setLastVideoBlobUrl(url: string | null): void {
+  _lastVideoBlobUrl = url;
+}
+
+export function getLastVideoBlobUrl(): string | null {
+  return _lastVideoBlobUrl;
 }
 
 const LAST_KEY    = "sadaksathi_lastDetection";

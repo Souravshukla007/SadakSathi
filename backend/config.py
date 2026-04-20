@@ -28,13 +28,13 @@ class Settings(BaseSettings):
     # --- Road Hazard Model ---
     # Detects: pothole, garbage, overflow_garbage, manhole_cover,
     #          broken_sign, broken_street_light, fallen_tree
-    MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "Municipal_model_nano.pt")
-    CONF_THRESHOLD: float = 0.25  # Default confidence threshold
+    MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "best_whole_model_nano.pt")
+    CONF_THRESHOLD: float = 0.13  # Default confidence threshold
     DEVICE: str = "auto"           # "auto" | "cpu" | "cuda"
 
     # --- Traffic Violation Model ---
     # Detects: helmet, no_helmet, number_plate, triple_riding, wrong_side_moving
-    TRAFFIC_MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "traffic_model-W.pt")
+    TRAFFIC_MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "traffic_model_nano_worse.pt")
 
     # --- Object Tracking (Traffic Video) ---
     # "bytetrack.yaml" or "botsort.yaml" — Ultralytics built-in trackers

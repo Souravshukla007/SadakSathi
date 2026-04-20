@@ -33,7 +33,7 @@ MAX_VIDEO_SIZE = 100 * 1024 * 1024  # 100 MB
 async def detect_image(
     request: Request,
     file: UploadFile = File(..., description="Image file (JPG, PNG, WEBP)"),
-    conf_threshold: float = Form(0.25, description="Confidence threshold (0.0 - 1.0)"),
+    conf_threshold: float = Form(0.13, description="Confidence threshold (0.0 - 1.0)"),
     include_annotated: bool = Form(True, description="Include base64-encoded annotated image"),
 ):
     """
@@ -154,6 +154,9 @@ async def detect_video(
             success=True,
             total_frames_analyzed=result.get("total_frames_analyzed", 0),
             total_detections=result.get("total_detections", 0),
+            road_priority=result.get("road_priority", "Low"),
+            priority_counts=result.get("priority_counts", {}),
+            annotated_image_base64=result.get("annotated_image_base64"),
             summary=result.get("summary", {}),
             message=result.get("message", ""),
         )

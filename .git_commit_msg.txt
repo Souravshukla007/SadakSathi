@@ -1,0 +1,16 @@
+feat: auth guard, live complaints, video player in results, detection threshold 0.13
+
+- proxy.ts: protect all auth-required routes with redirect-back param
+- AppHeader: hide Complaints/Leaderboard/Dashboard for guests, center nav links
+- auth/page.tsx: redirect to original destination after login/signup
+- complaints/page.tsx: full rewrite - live DB feed, real stats, submit form
+- api/complaints/route.ts: new POST endpoint to create complaints
+- api/complaints/feed/route.ts: add status filter + multi-field search
+- results/page.tsx: video player for video mode, best-frame annotated strip
+- upload/page.tsx: preserve blob URL for results page video playback
+- mlApi.ts: module-level blob URL store for cross-page video access
+- backend/config.py: lower CONF_THRESHOLD 0.25 -> 0.13
+- backend/ml/detection.py: capture best annotated frame in video mode
+- backend/models/schemas.py: add annotated_image_base64 to VideoAssessmentResponse
+- backend/routers/detection.py: pass new video frame fields in response
+- run_detection.py: standalone dual-model detection test script

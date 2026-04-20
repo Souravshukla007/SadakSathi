@@ -6,6 +6,7 @@ import AppFooter from "@/components/AppFooter";
 import Link from "next/link";
 import {
   getLastDetection,
+  getLastVideoBlobUrl,
   StoredDetection,
   ImageAssessmentResponse,
   TrafficAssessmentResponse,
@@ -45,9 +46,11 @@ function downloadJSON(data: unknown, filename: string) {
 export default function ResultsPage() {
   const [stored, setStored] = useState<StoredDetection | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
 
   useEffect(() => {
     setStored(getLastDetection());
+    setVideoBlobUrl(getLastVideoBlobUrl());
     setLoaded(true);
 
     const observer = new IntersectionObserver(
@@ -114,13 +117,17 @@ export default function ResultsPage() {
   const detections: (SingleDetection | TrafficDetection)[] = result.detections ?? [];
   const totalDetections: number = result.total_detections ?? 0;
   const overallPriority: string = result.road_priority ?? result.overall_priority ?? "Low";
-  const priorityCounts: Record<string, number> = result.priority_counts ?? {};
+  // For video responses, priority_counts is now at top level (same as image)
+  const priorityCounts: Record<string, number> = result.priority_counts ?? result.summary?.priority_counts ?? {};
   const classCounts: Record<string, number>    = result.class_counts ?? result.summary?.class_counts ?? {};
   const avgConf = avgConfidence(detections);
 
   // Video-specific
   const violations = result.violations ?? [];
   const uniqueViolations: number = result.unique_tracked_violations ?? 0;
+  const totalFramesAnalyzed: number = result.total_frames_analyzed ?? 0;
+  const videoFps: number = (result.summary as any)?.fps ?? 0;
+  const videoSampleRate: number = (result.summary as any)?.sample_rate ?? 5;
 
   return (
     <>
@@ -162,37 +169,112 @@ export default function ResultsPage() {
               {/* Media + Detection Table */}
               <div className="lg:col-span-2 space-y-8">
 
-                {/* Annotated Image */}
+                {/* Media Panel */}
                 <div className="bg-white rounded-2xl shadow-medium border border-border-light overflow-hidden" data-animation-on-scroll="">
-                  <div className="bg-gray-900 aspect-video relative group overflow-hidden flex items-center justify-center">
-                    {annotatedB64 ? (
-                      <img
-                        src={`data:image/jpeg;base64,${annotatedB64}`}
-                        alt="AI Annotated Result"
-                        className="w-full h-full object-contain"
+                  {/* Video Player — shown for all video uploads */}
+                  {isVideo && videoBlobUrl ? (
+                    <div className="bg-gray-900">
+                      <video
+                        src={videoBlobUrl}
+                        controls
+                        className="w-full max-h-[520px] object-contain"
+                        playsInline
                       />
-                    ) : (
-                      <div className="text-center text-white/40 p-8">
-                        <svg className="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                        <p className="text-sm">{isVideo ? "Annotated frames not available for video mode." : "No annotated image returned."}</p>
-                      </div>
-                    )}
+                      {/* Best annotated frame strip */}
+                      {annotatedB64 && (
+                        <div className="p-4 border-t border-white/10">
+                          <div className="text-[10px] text-white/50 uppercase tracking-widest mb-2 px-1">Best Detection Frame (AI Annotated)</div>
+                          <img
+                            src={`data:image/jpeg;base64,${annotatedB64}`}
+                            alt="Best annotated frame"
+                            className="w-full max-h-48 object-contain rounded-lg"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* Image / fallback panel */
+                    <div className="bg-gray-900 aspect-video relative group overflow-hidden flex items-center justify-center">
+                      {annotatedB64 ? (
+                        <img
+                          src={`data:image/jpeg;base64,${annotatedB64}`}
+                          alt="AI Annotated Result"
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <div className="text-center text-white/40 p-8">
+                          <svg className="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                          <p className="text-sm">{isVideo ? "No hazards detected — no annotated frame to display." : "No annotated image returned."}</p>
+                        </div>
+                      )}
 
-                    {/* Live Analysis Overlay */}
-                    {totalDetections > 0 && (
-                      <div className="absolute top-4 right-4 bg-gray-950/80 backdrop-blur p-4 rounded-lg border border-white/10 text-white">
-                        <div className="text-[10px] opacity-60 uppercase mb-2">Analysis Summary</div>
-                        <div className="space-y-1">
-                          <div className="flex justify-between gap-8 text-xs"><span>Detections:</span><span className="font-bold text-brand-primary">{String(totalDetections).padStart(2, "0")}</span></div>
-                          <div className="flex justify-between gap-8 text-xs"><span>Avg Confidence:</span><span className="font-bold text-brand-primary">{avgConf}%</span></div>
-                          {isVideo && <div className="flex justify-between gap-8 text-xs"><span>Unique Violations:</span><span className="font-bold text-red-400">{uniqueViolations}</span></div>}
+                      {/* Live Analysis Overlay */}
+                      {totalDetections > 0 && (
+                        <div className="absolute top-4 right-4 bg-gray-950/80 backdrop-blur p-4 rounded-lg border border-white/10 text-white">
+                          <div className="text-[10px] opacity-60 uppercase mb-2">Analysis Summary</div>
+                          <div className="space-y-1">
+                            <div className="flex justify-between gap-8 text-xs"><span>Detections:</span><span className="font-bold text-brand-primary">{String(totalDetections).padStart(2, "00")}</span></div>
+                            <div className="flex justify-between gap-8 text-xs"><span>Avg Confidence:</span><span className="font-bold text-brand-primary">{avgConf}%</span></div>
+                            {isVideo && <div className="flex justify-between gap-8 text-xs"><span>Unique Violations:</span><span className="font-bold text-red-400">{uniqueViolations}</span></div>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Analysis Overlay for video-with-player */}
+                  {isVideo && videoBlobUrl && totalDetections > 0 && (
+                    <div className="px-6 py-3 bg-gray-950 flex flex-wrap gap-6 text-white text-xs border-t border-white/10">
+                      <span><span className="opacity-50 mr-2">Detections</span><span className="font-bold text-brand-primary">{totalDetections}</span></span>
+                      <span><span className="opacity-50 mr-2">Avg Confidence</span><span className="font-bold text-brand-primary">{avgConf}%</span></span>
+                      <span><span className="opacity-50 mr-2">Frames Analyzed</span><span className="font-bold">{totalFramesAnalyzed}</span></span>
+                      <span><span className="opacity-50 mr-2">Overall Priority</span><span className={`font-bold uppercase ${overallPriority === "High" ? "text-red-400" : overallPriority === "Medium" ? "text-yellow-400" : "text-green-400"}`}>{overallPriority}</span></span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Video Stats Panel — Road Hazard video mode */}
+                {isVideo && !isTraffic && (
+                  <div className="bg-white rounded-2xl shadow-medium border border-border-light overflow-hidden" data-animation-on-scroll="">
+                    <div className="px-6 py-4 border-b border-border-light bg-neutral-surface">
+                      <h3 className="font-heading font-bold">Video Analysis Summary</h3>
+                    </div>
+                    <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
+                      {[
+                        { label: "Frames Analyzed", value: String(totalFramesAnalyzed) },
+                        { label: "Total Detections", value: String(totalDetections) },
+                        { label: "Frame Sample Rate", value: `Every ${videoSampleRate}th` },
+                        { label: "Source FPS", value: videoFps > 0 ? `${videoFps.toFixed(1)} fps` : "—" },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="text-center">
+                          <div className="text-2xl font-bold font-heading text-text-primary">{value}</div>
+                          <div className="text-xs text-text-secondary mt-1 uppercase tracking-wide">{label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {Object.keys(classCounts).length > 0 && (
+                      <div className="px-6 pb-6">
+                        <div className="text-xs font-mono text-text-secondary uppercase mb-3">Class Breakdown Across All Frames</div>
+                        <div className="space-y-2">
+                          {Object.entries(classCounts).map(([cls, count]) => (
+                            <div key={cls} className="flex items-center gap-3">
+                              <div className="flex-1 text-sm capitalize">{cls.split("_").join(" ")}</div>
+                              <div className="w-32 h-2 bg-neutral-surface rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-brand-primary rounded-full transition-all duration-700"
+                                  style={{ width: totalDetections > 0 ? `${(count / totalDetections) * 100}%` : "0%" }}
+                                />
+                              </div>
+                              <div className="text-sm font-bold w-8 text-right">{count}</div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
                   </div>
-                </div>
+                )}
 
                 {/* Detection Table — Image mode */}
                 {!isVideo && detections.length > 0 && (

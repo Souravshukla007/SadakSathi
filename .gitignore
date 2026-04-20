@@ -53,3 +53,7 @@ backend/uploads/
 
 # IDE
 .idea/
+
+#mics
+result*.jpg
+result*.mp4

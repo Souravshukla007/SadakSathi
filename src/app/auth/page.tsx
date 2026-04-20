@@ -1,19 +1,21 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 
 import AppFooter from "@/components/AppFooter";
 import { AUTH_CREDENTIALS } from "@/lib/credentials";
 
-export default function AuthPage() {
+function AuthForm() {
     const [activeTab, setActiveTab] = useState<"login" | "signup">("login");
     const [isVisible, setIsVisible] = useState(false);
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const redirectTo = searchParams.get('redirect') || '/dashboard';
 
     // Form states
     const [email, setEmail] = useState("");
@@ -49,15 +51,11 @@ export default function AuthPage() {
             
             if (res.ok) {
                 toast.success(data.message || "Login successful!");
-                
-                // Handle role-based redirects
-                if (data.redirectUrl) {
-                    console.log('🚀 Redirecting to:', data.redirectUrl);
+                // Role-based redirect takes priority; then the ?redirect= param
+                if (data.redirectUrl && (data.redirectUrl === '/Municipal' || data.redirectUrl.startsWith('/admin'))) {
                     window.location.href = data.redirectUrl;
                 } else {
-                    console.log('🏠 Redirecting to home');
-                    // Regular citizen login - redirect to home
-                    window.location.href = "/";
+                    window.location.href = redirectTo;
                 }
             } else {
                 toast.error(data.message || "Login failed");
@@ -82,7 +80,7 @@ export default function AuthPage() {
             const data = await res.json();
             if (res.ok) {
                 toast.success("Signup successful! Welcome.");
-                window.location.href = "/";
+                window.location.href = redirectTo;
             } else {
                 toast.error(data.message || "Signup failed");
             }
@@ -288,5 +286,13 @@ export default function AuthPage() {
             </main>
             <AppFooter />
         </>
+    );
+}
+
+export default function AuthPage() {
+    return (
+        <Suspense fallback={null}>
+            <AuthForm />
+        </Suspense>
     );
 }

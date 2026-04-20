@@ -58,6 +58,12 @@ class VideoAssessmentResponse(BaseModel):
     success: bool = True
     total_frames_analyzed: int
     total_detections: int
+    road_priority: str = Field("Low", description="Overall road hazard priority across all frames: High | Medium | Low")
+    priority_counts: dict[str, int] = Field(default_factory=dict)
+    annotated_image_base64: str | None = Field(
+        None,
+        description="Base64-encoded JPEG of the most detection-rich frame, annotated with bounding boxes.",
+    )
     summary: dict = Field(default_factory=dict)
     message: str = ""
 

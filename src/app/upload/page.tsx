@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
 import { Upload, AlertCircle, FileImage, ShieldAlert, BadgeInfo, Zap } from "lucide-react";
-import { saveDetectionResult } from "@/lib/mlApi";
+import { saveDetectionResult, setLastVideoBlobUrl } from "@/lib/mlApi";
 import { useRouter } from "next/navigation";
 
 type EngineType = "road" | "traffic";
@@ -20,6 +20,10 @@ export default function UploadPage() {
     const [file, setFile] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Flag: set to true just before router.push('/results') so the cleanup
+    // effect doesn't revoke a blob URL that the results page still needs.
+    const navigatingRef = useRef(false);
 
     // Processing State
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -46,10 +50,13 @@ export default function UploadPage() {
         return () => observer.disconnect();
     }, []);
 
-    // Cleanup object URL on unmount to prevent memory leaks
+    // Cleanup object URL on unmount to prevent memory leaks,
+    // but only if we are NOT navigating to the results page.
     useEffect(() => {
         return () => {
-            if (previewUrl) URL.revokeObjectURL(previewUrl);
+            if (!navigatingRef.current && previewUrl) {
+                URL.revokeObjectURL(previewUrl);
+            }
         };
     }, [previewUrl]);
 
@@ -99,7 +106,7 @@ export default function UploadPage() {
 
         const formData = new FormData();
         formData.append("file", file);
-        formData.append("conf_threshold", "0.25");
+        formData.append("conf_threshold", "0.13");
 
         // Determine media type (image vs video)
         const mediaType = activeTab === "IMAGE" ? "image" : "video";
@@ -136,6 +143,12 @@ export default function UploadPage() {
 
             // Persist result to sessionStorage for /results page
             saveDetectionResult(data, engine, mediaType, file.name);
+
+            // For video uploads, keep the blob URL alive so /results can play it
+            if (mediaType === "video" && previewUrl) {
+                setLastVideoBlobUrl(previewUrl);
+                navigatingRef.current = true;
+            }
 
             setResults(data);
 
@@ -331,7 +344,13 @@ export default function UploadPage() {
                                                 </span>
                                             </div>
                                             <button
-                                                onClick={() => router.push("/results")}
+                                                onClick={() => {
+                                                    if (activeTab === "VIDEO" && previewUrl) {
+                                                        setLastVideoBlobUrl(previewUrl);
+                                                        navigatingRef.current = true;
+                                                    }
+                                                    router.push("/results");
+                                                }}
                                                 className="px-5 py-2.5 bg-text-primary text-white text-sm font-bold rounded-lg hover:-translate-y-0.5 transition-transform flex items-center gap-2"
                                             >
                                                 View Full Report
