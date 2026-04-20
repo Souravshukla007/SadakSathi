@@ -1,6 +1,6 @@
 # ============================================
 # SadakSathi Backend — Production Dependencies
-# Render-compatible (CPU-only torch, no Rust-build packages)
+# Render-compatible (CPU-only torch via find-links)
 # ============================================
 
 # --- Web Framework ---
@@ -18,9 +18,9 @@ opencv-python-headless>=4.9.0
 Pillow>=10.2.0
 numpy>=1.26.0
 
-# --- ML / YOLO (CPU-only torch — smaller, faster build on Render) ---
-# Install CPU torch first via the PyTorch index before ultralytics pulls in CUDA
---extra-index-url https://download.pytorch.org/whl/cpu
+# --- ML / YOLO ---
+# Use PyTorch CPU-only wheels via find-links (avoids downloading 2.5GB CUDA build)
+-f https://download.pytorch.org/whl/torch_stable.html
 torch==2.2.2+cpu
 torchvision==0.17.2+cpu
 
@@ -30,10 +30,10 @@ ultralytics>=8.2.0
 geopy>=2.4.0
 
 # --- NLP similarity (duplication detection) ---
-# Pin python-bidi to pure-Python version to avoid Rust/maturin build failure
+# Pin python-bidi to pure-Python version (>=0.6 requires Rust/maturin)
 python-bidi==0.4.2
 sentence-transformers>=3.0.0
 scikit-learn>=1.4.0
 
-# NOTE: easyocr is excluded — it pulls python-bidi>=0.6 which requires Rust.
-# OCR (number plate reading) will gracefully degrade when OCR_ENABLED=False.
+# NOTE: easyocr excluded — pulls python-bidi>=0.6 which requires Rust on Render.
+# OCR gracefully disabled via OCR_ENABLED=False in config.py
