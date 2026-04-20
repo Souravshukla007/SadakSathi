@@ -4,12 +4,15 @@ import React, { useState, useEffect, useRef } from "react";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
 import { Upload, AlertCircle, FileImage, ShieldAlert, BadgeInfo, Zap } from "lucide-react";
+import { saveDetectionResult } from "@/lib/mlApi";
+import { useRouter } from "next/navigation";
 
 type EngineType = "road" | "traffic";
 type MediaType = "IMAGE" | "VIDEO";
 
 export default function UploadPage() {
     // UI State
+    const router = useRouter();
     const [engine, setEngine] = useState<EngineType>("road");
     const [activeTab, setActiveTab] = useState<MediaType>("IMAGE");
     
@@ -96,19 +99,19 @@ export default function UploadPage() {
 
         const formData = new FormData();
         formData.append("file", file);
-        // Default confidence threshold; could be made a UI slider
         formData.append("conf_threshold", "0.25");
-        
-        // Build Endpoint URL based on state
-        let endpoint = "http://127.0.0.1:8000/detect";
-        if (engine === "traffic") {
-            endpoint += "/traffic";
-        }
+
+        // Determine media type (image vs video)
+        const mediaType = activeTab === "IMAGE" ? "image" : "video";
+
+        // Build proxy endpoint URL
+        const endpoint = `/api/ml/detect?engine=${engine}&mediaType=${mediaType}`;
+
         if (activeTab === "IMAGE") {
-            endpoint += "/image";
             formData.append("include_annotated", "true");
-        } else {
-            endpoint += "/video";
+        }
+        if (engine === "traffic") {
+            formData.append("run_ocr", "true");
         }
 
         try {
@@ -122,14 +125,17 @@ export default function UploadPage() {
                     throw new Error("Model Not Loaded: Please place your .pt model files in the backend directory and restart the FastAPI server.");
                 }
                 const errorData = await res.json().catch(() => null);
-                throw new Error(errorData?.detail || `API Error: ${res.status}`);
+                throw new Error(errorData?.detail || errorData?.message || `API Error: ${res.status}`);
             }
 
             const data = await res.json();
-            
+
             if (!data.success) {
                 throw new Error(data.message || "Failed to analyze media.");
             }
+
+            // Persist result to sessionStorage for /results page
+            saveDetectionResult(data, engine, mediaType, file.name);
 
             setResults(data);
 
@@ -317,11 +323,20 @@ export default function UploadPage() {
                                             <h2 className="text-xl font-heading font-bold">Analysis Report</h2>
                                             <p className="text-sm text-text-secondary">{results.message}</p>
                                         </div>
-                                        <div className="text-right">
-                                            <span className="block text-xs font-mono text-text-secondary uppercase">OVERALL PRIORITY</span>
-                                            <span className={`px-3 py-1 mt-1 inline-block rounded-full text-xs font-bold border ${getPriorityColor(results.road_priority || results.overall_priority)}`}>
-                                                {(results.road_priority || results.overall_priority || "UNKNOWN").toUpperCase()}
-                                            </span>
+                                        <div className="flex items-center gap-4">
+                                            <div className="text-right">
+                                                <span className="block text-xs font-mono text-text-secondary uppercase">OVERALL PRIORITY</span>
+                                                <span className={`px-3 py-1 mt-1 inline-block rounded-full text-xs font-bold border ${getPriorityColor(results.road_priority || results.overall_priority)}`}>
+                                                    {(results.road_priority || results.overall_priority || "UNKNOWN").toUpperCase()}
+                                                </span>
+                                            </div>
+                                            <button
+                                                onClick={() => router.push("/results")}
+                                                className="px-5 py-2.5 bg-text-primary text-white text-sm font-bold rounded-lg hover:-translate-y-0.5 transition-transform flex items-center gap-2"
+                                            >
+                                                View Full Report
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                                            </button>
                                         </div>
                                     </div>
 

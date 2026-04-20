@@ -22,6 +22,7 @@ from ml.traffic import (
     get_traffic_device,
 )
 from models.schemas import TrafficAssessmentResponse, TrafficDetection, TrafficVideoAssessmentResponse
+from routers.stats import record_detection
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/detect/traffic", tags=["Traffic Detection"])
@@ -117,7 +118,7 @@ async def detect_traffic_image(
             )
         )
 
-    return TrafficAssessmentResponse(
+    response = TrafficAssessmentResponse(
         success=True,
         total_detections=result.get("total_detections", 0),
         detections=clean_detections,
@@ -127,6 +128,16 @@ async def detect_traffic_image(
         annotated_image_base64=annotated_b64,
         message=result.get("message", ""),
     )
+
+    # Update session-scoped stats
+    record_detection(
+        engine="traffic",
+        total_detections=response.total_detections,
+        priority_counts=result.get("priority_counts", {}),
+        class_counts=result.get("class_counts", {}),
+    )
+
+    return response
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -214,7 +225,7 @@ async def detect_traffic_video(
                 detail=result.get("message", "Video processing failed"),
             )
 
-        return TrafficVideoAssessmentResponse(
+        response = TrafficVideoAssessmentResponse(
             success=True,
             total_frames_analyzed=result.get("total_frames_analyzed", 0),
             total_frames=result.get("total_frames", 0),
@@ -224,6 +235,17 @@ async def detect_traffic_video(
             summary=result.get("summary", {}),
             message=result.get("message", ""),
         )
+
+        # Update session-scoped stats
+        summary = result.get("summary", {})
+        record_detection(
+            engine="traffic",
+            total_detections=response.total_detections,
+            priority_counts=summary.get("priority_counts", {}),
+            class_counts=summary.get("class_counts", {}),
+        )
+
+        return response
 
     finally:
         if temp_path.exists():

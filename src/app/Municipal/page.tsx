@@ -1,240 +1,344 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { verifyToken } from "@/lib/jwt";
+import {
+  getDetectionHistory,
+  StoredDetection,
+  relativeTime,
+} from "@/lib/mlApi";
+
+// ── Derived stats from sessionStorage history ─────────────────────────────────
+
+interface DashboardStats {
+  totalUploads: number;
+  potholesDetected: number;
+  highSeverity: number;
+  barData: number[];            // last 7 runs — total_detections each
+  highPct: number;
+  mediumPct: number;
+  lowPct: number;
+}
+
+function computeStats(history: StoredDetection[]): DashboardStats {
+  let potholesDetected = 0;
+  let highSeverity = 0;
+  let mediumCount  = 0;
+  let lowCount     = 0;
+
+  for (const entry of history) {
+    const r = entry.result as any;
+    const pc = r.priority_counts ?? r.summary?.priority_counts ?? {};
+    const cc = r.class_counts   ?? r.summary?.class_counts   ?? {};
+
+    highSeverity   += pc["High"]   ?? 0;
+    mediumCount    += pc["Medium"] ?? 0;
+    lowCount       += pc["Low"]    ?? 0;
+    potholesDetected += cc["pothole"] ?? 0;
+  }
+
+  const total = highSeverity + mediumCount + lowCount;
+
+  // Last 7 runs → detection count for bar chart
+  const last7 = history.slice(0, 7).reverse();
+  const barData = last7.map((e) => (e.result as any).total_detections ?? 0);
+  // Pad to 7 bars
+  while (barData.length < 7) barData.unshift(0);
+
+  const maxBar = Math.max(...barData, 1);
+
+  return {
+    totalUploads:    history.length,
+    potholesDetected,
+    highSeverity,
+    barData:         barData.map((v) => Math.round((v / maxBar) * 100)), // percentages for bar height
+    highPct:         total > 0 ? Math.round((highSeverity / total) * 100) : 0,
+    mediumPct:       total > 0 ? Math.round((mediumCount  / total) * 100) : 0,
+    lowPct:          total > 0 ? Math.round((lowCount     / total) * 100) : 0,
+  };
+}
+
+const DAY_LABELS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function UserDashboardPage() {
-    const router = useRouter();
+  const router = useRouter();
+  const [history, setHistory]   = useState<StoredDetection[]>([]);
+  const [stats, setStats]       = useState<DashboardStats | null>(null);
+  const [loaded, setLoaded]     = useState(false);
 
-    useEffect(() => {
-        // Check authentication and role
-        const checkAuth = async () => {
-            try {
-                const res = await fetch('/api/auth/me', { cache: 'no-store' });
-                if (!res.ok) {
-                    router.push('/auth');
-                    return;
-                }
-                
-                const data = await res.json();
-                // Check if user has municipal access
-                if (data.role !== 'municipal' && data.role !== 'user') {
-                    router.push('/auth');
-                    return;
-                }
-            } catch (error) {
-                router.push('/auth');
-            }
-        };
+  useEffect(() => {
+    // Auth check
+    const checkAuth = async () => {
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!res.ok) { router.push("/auth"); return; }
+        const data = await res.json();
+        if (data.role !== "municipal" && data.role !== "user") {
+          router.push("/auth");
+        }
+      } catch {
+        router.push("/auth");
+      }
+    };
+    checkAuth();
 
-        checkAuth();
+    // Load detection history from sessionStorage
+    const h = getDetectionHistory();
+    setHistory(h);
+    setStats(computeStats(h));
+    setLoaded(true);
 
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('animate-on-scroll-visible');
-                    observer.unobserve(entry.target);
-                }
-            });
-        }, { threshold: 0.1 });
-
-        document.querySelectorAll('[data-animation-on-scroll]').forEach(el => {
-            el.classList.add('animate-on-scroll-hidden');
-            observer.observe(el);
+    // Scroll animations
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("animate-on-scroll-visible");
+            observer.unobserve(entry.target);
+          }
         });
-
-        return () => observer.disconnect();
-    }, [router]);
-
-    return (
-        <>
-            <AppHeader dashboardMode={true} />
-            <main className="flex-grow pt-16">
-                <div className="flex min-h-screen bg-neutral-surface">
-                    {/* Sidebar */}
-                    <aside className="w-64 bg-text-primary text-white hidden lg:flex flex-col fixed inset-y-0 left-0 z-[60]">
-                        <div className="p-6 border-b border-white/10">
-                            <div className="text-xl font-heading font-bold flex items-center gap-2">
-                                <span className="text-2xl">🛣️</span> SadakSathi
-                            </div>
-                        </div>
-                        <nav className="flex-grow p-4 space-y-1">
-                            <Link href="/my-account" className="flex items-center gap-3 px-4 py-3 bg-brand-primary text-text-primary font-bold rounded-lg">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
-                                Dashboard
-                            </Link>
-                            <Link href="#" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-                                Analytics
-                            </Link>
-                            <Link href="#" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                                Heatmaps
-                            </Link>
-                            <Link href="#" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                                Team Access
-                            </Link>
-                        </nav>
-                        <div className="p-4 border-t border-white/10">
-                            <div className="flex items-center gap-3 px-4 py-3 text-white opacity-70">
-                                <div className="w-8 h-8 rounded-full bg-brand-primary"></div>
-                                <div className="min-w-0">
-                                    <div className="text-xs font-bold truncate">Municipal User</div>
-                                    <div className="text-[10px] opacity-60 truncate">Municipal@SadakSathi.ai</div>
-                                </div>
-                            </div>
-                        </div>
-                    </aside>
-
-                    {/* Main Content Area */}
-                    <div className="flex-grow lg:ml-64 p-8">
-                        <div className="max-w-7xl mx-auto">
-                            {/* Top Navbar Contextual Info */}
-                            <div className="flex justify-between items-center mb-10">
-                                <h1 className="text-3xl font-heading font-normal tracking-tight">Municipal Dashboard</h1>
-                                <div className="flex items-center gap-4">
-                                    <button className="w-10 h-10 flex items-center justify-center bg-white rounded-full shadow-soft border border-border-light relative">
-                                        <svg className="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
-                                        <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></div>
-                                    </button>
-                                    <div className="h-8 w-px bg-gray-200"></div>
-                                    <span className="text-sm font-bold text-text-primary">CITY OF NEW YORK</span>
-                                </div>
-                            </div>
-
-                            {/* Stats Cards */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-                                <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">Total Uploads</div>
-                                    <div className="text-3xl font-bold mb-1">2,482</div>
-                                    <div className="text-xs text-green-500 font-bold flex items-center gap-1">
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
-                                        +12.5% this month
-                                    </div>
-                                </div>
-                                <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">Potholes Detected</div>
-                                    <div className="text-3xl font-bold mb-1">8,102</div>
-                                    <div className="text-xs text-text-secondary">Avg. 3.2 per upload</div>
-                                </div>
-                                <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">High Severity</div>
-                                    <div className="text-3xl font-bold mb-1 text-red-500">1,244</div>
-                                    <div className="text-xs text-text-secondary">Requires immediate action</div>
-                                </div>
-                                <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">AI Accuracy</div>
-                                    <div className="text-3xl font-bold mb-1">94.2%</div>
-                                    <div className="text-xs text-brand-primary font-bold">Industry Leading</div>
-                                </div>
-                            </div>
-
-                            {/* Charts Area */}
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
-                                <div className="lg:col-span-2 bg-white p-8 rounded-2xl shadow-soft border border-border-light">
-                                    <h3 className="font-heading font-bold mb-8">Pothole Detection Trends (Daily)</h3>
-                                    <div className="h-64 flex items-end justify-between gap-2">
-                                        {/* Mock Bar Chart */}
-                                        <div className="w-full bg-brand-primary/20 rounded-t-sm h-[40%]"></div>
-                                        <div className="w-full bg-brand-primary/40 rounded-t-sm h-[60%]"></div>
-                                        <div className="w-full bg-brand-primary/20 rounded-t-sm h-[30%]"></div>
-                                        <div className="w-full bg-brand-primary/60 rounded-t-sm h-[85%]"></div>
-                                        <div className="w-full bg-brand-primary/40 rounded-t-sm h-[55%]"></div>
-                                        <div className="w-full bg-brand-primary/80 rounded-t-sm h-[95%]"></div>
-                                        <div className="w-full bg-brand-primary/100 rounded-t-sm h-[70%]"></div>
-                                    </div>
-                                    <div className="flex justify-between mt-4 text-[10px] font-mono text-text-secondary">
-                                        <span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span><span>SUN</span>
-                                    </div>
-                                </div>
-                                <div className="bg-white p-8 rounded-2xl shadow-soft border border-border-light">
-                                    <h3 className="font-heading font-bold mb-8">Severity Distribution</h3>
-                                    <div className="relative aspect-square flex items-center justify-center">
-                                        {/* Mock Pie Chart (Ring) */}
-                                        <div className="w-full h-full rounded-full border-[20px] border-gray-100 relative">
-                                            <div className="absolute inset-[-20px] rounded-full border-[20px] border-red-500 clip-path-75"></div>
-                                        </div>
-                                        <div className="absolute text-center">
-                                            <div className="text-2xl font-bold">1,244</div>
-                                            <div className="text-[10px] uppercase font-mono text-text-secondary">High Risk</div>
-                                        </div>
-                                    </div>
-                                    <div className="mt-8 space-y-3">
-                                        <div className="flex items-center justify-between text-sm">
-                                            <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-500 rounded-full"></div> High</div>
-                                            <span className="font-bold">15%</span>
-                                        </div>
-                                        <div className="flex items-center justify-between text-sm">
-                                            <div className="flex items-center gap-2"><div className="w-3 h-3 bg-yellow-400 rounded-full"></div> Medium</div>
-                                            <span className="font-bold">45%</span>
-                                        </div>
-                                        <div className="flex items-center justify-between text-sm">
-                                            <div className="flex items-center gap-2"><div className="w-3 h-3 bg-green-400 rounded-full"></div> Low</div>
-                                            <span className="font-bold">40%</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Recent Uploads Table */}
-                            <div className="bg-white rounded-2xl shadow-soft border border-border-light overflow-hidden">
-                                <div className="px-8 py-6 border-b border-border-light flex justify-between items-center">
-                                    <h3 className="font-heading font-bold">Recent Detection Tasks</h3>
-                                    <button className="text-sm font-bold text-brand-primary hover:underline">View All Tasks</button>
-                                </div>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left">
-                                        <thead>
-                                            <tr className="text-[10px] font-mono text-text-secondary uppercase bg-neutral-surface border-b border-border-light">
-                                                <th className="px-8 py-4">Task ID</th>
-                                                <th className="px-8 py-4">User</th>
-                                                <th className="px-8 py-4">Status</th>
-                                                <th className="px-8 py-4">Detections</th>
-                                                <th className="px-8 py-4">Timestamp</th>
-                                                <th className="px-8 py-4">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-border-light">
-                                            <tr className="hover:bg-neutral-surface transition-colors">
-                                                <td className="px-8 py-5 text-sm font-mono">#PV-9912</td>
-                                                <td className="px-8 py-5 text-sm">John Doe</td>
-                                                <td className="px-8 py-5"><span className="px-2 py-1 bg-green-100 text-green-700 rounded text-[10px] font-bold">COMPLETED</span></td>
-                                                <td className="px-8 py-5 text-sm font-bold">03</td>
-                                                <td className="px-8 py-5 text-sm text-text-secondary">2 mins ago</td>
-                                                <td className="px-8 py-5"><Link href="/results" className="text-brand-primary hover:underline text-sm font-bold">Details</Link></td>
-                                            </tr>
-                                            <tr className="hover:bg-neutral-surface transition-colors">
-                                                <td className="px-8 py-5 text-sm font-mono">#PV-9911</td>
-                                                <td className="px-8 py-5 text-sm">Sarah Smith</td>
-                                                <td className="px-8 py-5"><span className="px-2 py-1 bg-brand-primary/20 text-brand-primary rounded text-[10px] font-bold">PROCESSING</span></td>
-                                                <td className="px-8 py-5 text-sm font-bold">--</td>
-                                                <td className="px-8 py-5 text-sm text-text-secondary">5 mins ago</td>
-                                                <td className="px-8 py-5"><span className="text-gray-300 text-sm font-bold">Details</span></td>
-                                            </tr>
-                                            <tr className="hover:bg-neutral-surface transition-colors">
-                                                <td className="px-8 py-5 text-sm font-mono">#PV-9910</td>
-                                                <td className="px-8 py-5 text-sm">Municipal Bot</td>
-                                                <td className="px-8 py-5"><span className="px-2 py-1 bg-green-100 text-green-700 rounded text-[10px] font-bold">COMPLETED</span></td>
-                                                <td className="px-8 py-5 text-sm font-bold">14</td>
-                                                <td className="px-8 py-5 text-sm text-text-secondary">15 mins ago</td>
-                                                <td className="px-8 py-5"><Link href="/results" className="text-brand-primary hover:underline text-sm font-bold">Details</Link></td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </main>
-            <div className="lg:ml-64">
-                <AppFooter />
-            </div>
-        </>
+      },
+      { threshold: 0.1 }
     );
+    document.querySelectorAll("[data-animation-on-scroll]").forEach((el) => {
+      el.classList.add("animate-on-scroll-hidden");
+      observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, [router]);
+
+  const s = stats;
+
+  return (
+    <>
+      <AppHeader dashboardMode={true} />
+      <main className="flex-grow pt-16">
+        <div className="flex min-h-screen bg-neutral-surface">
+
+          {/* Sidebar */}
+          <aside className="w-64 bg-text-primary text-white hidden lg:flex flex-col fixed inset-y-0 left-0 z-[60]">
+            <div className="p-6 border-b border-white/10">
+              <div className="text-xl font-heading font-bold flex items-center gap-2">
+                <span className="text-2xl">🛣️</span> SadakSathi
+              </div>
+            </div>
+            <nav className="flex-grow p-4 space-y-1">
+              <Link href="/Municipal" className="flex items-center gap-3 px-4 py-3 bg-brand-primary text-text-primary font-bold rounded-lg">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+                Dashboard
+              </Link>
+              <Link href="/upload" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                Run Detection
+              </Link>
+              <Link href="/results" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                Last Report
+              </Link>
+              <Link href="/traffic-violations" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                Traffic Violations
+              </Link>
+            </nav>
+            <div className="p-4 border-t border-white/10">
+              <div className="flex items-center gap-3 px-4 py-3 text-white opacity-70">
+                <div className="w-8 h-8 rounded-full bg-brand-primary" />
+                <div className="min-w-0">
+                  <div className="text-xs font-bold truncate">Municipal User</div>
+                  <div className="text-[10px] opacity-60 truncate">SadakSathi.ai</div>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          {/* Main Content */}
+          <div className="flex-grow lg:ml-64 p-8">
+            <div className="max-w-7xl mx-auto">
+
+              {/* Top Bar */}
+              <div className="flex justify-between items-center mb-10">
+                <h1 className="text-3xl font-heading font-normal tracking-tight">Municipal Dashboard</h1>
+                <div className="flex items-center gap-4">
+                  <Link href="/upload" className="px-4 py-2 bg-brand-primary text-text-primary text-sm font-bold rounded-lg hover:scale-[1.02] transition-transform">
+                    + New Analysis
+                  </Link>
+                  <div className="h-8 w-px bg-gray-200" />
+                  <span className="text-sm font-bold text-text-primary">SADAKSATHI.AI</span>
+                </div>
+              </div>
+
+              {/* Stats Cards */}
+              {!loaded ? (
+                /* Skeleton */
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="bg-white p-6 rounded-2xl shadow-soft border border-border-light animate-pulse">
+                      <div className="h-3 w-24 bg-gray-200 rounded mb-4" />
+                      <div className="h-8 w-16 bg-gray-200 rounded mb-2" />
+                      <div className="h-3 w-32 bg-gray-200 rounded" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+                  <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
+                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">Total Analyses</div>
+                    <div className="text-3xl font-bold mb-1">{s?.totalUploads ?? 0}</div>
+                    <div className="text-xs text-text-secondary">This browser session</div>
+                  </div>
+                  <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
+                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">Potholes Detected</div>
+                    <div className="text-3xl font-bold mb-1">{s?.potholesDetected ?? 0}</div>
+                    <div className="text-xs text-text-secondary">Road hazard engine</div>
+                  </div>
+                  <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
+                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">High Severity</div>
+                    <div className="text-3xl font-bold mb-1 text-red-500">{s?.highSeverity ?? 0}</div>
+                    <div className="text-xs text-text-secondary">Requires immediate action</div>
+                  </div>
+                  <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
+                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">AI Accuracy</div>
+                    <div className="text-3xl font-bold mb-1">94.2%</div>
+                    <div className="text-xs text-brand-primary font-bold">Industry Leading</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Charts */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
+
+                {/* Bar Chart — last 7 runs */}
+                <div className="lg:col-span-2 bg-white p-8 rounded-2xl shadow-soft border border-border-light">
+                  <h3 className="font-heading font-bold mb-2">Detection Count — Last {Math.min(history.length, 7)} Runs</h3>
+                  {history.length === 0 && (
+                    <p className="text-sm text-text-secondary mb-6">No analyses yet. <Link href="/upload" className="text-brand-primary font-bold hover:underline">Run your first detection →</Link></p>
+                  )}
+                  <div className="h-64 flex items-end justify-between gap-2 mt-4">
+                    {(s?.barData ?? Array(7).fill(0)).map((pct, i) => (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                        <div
+                          className="w-full rounded-t-sm transition-all duration-700"
+                          style={{
+                            height: `${Math.max(pct, 4)}%`,
+                            backgroundColor: pct === 0 ? "#e5e7eb" : `hsl(142, 71%, ${40 + (100 - pct) * 0.2}%)`,
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between mt-4 text-[10px] font-mono text-text-secondary">
+                    {DAY_LABELS.map((d) => <span key={d}>{d}</span>)}
+                  </div>
+                </div>
+
+                {/* Severity Ring */}
+                <div className="bg-white p-8 rounded-2xl shadow-soft border border-border-light">
+                  <h3 className="font-heading font-bold mb-8">Severity Distribution</h3>
+                  <div className="relative aspect-square flex items-center justify-center">
+                    <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f3f4f6" strokeWidth="3.5" />
+                      {s && s.highPct > 0 && (
+                        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#ef4444" strokeWidth="3.5"
+                          strokeDasharray={`${s.highPct} ${100 - s.highPct}`} strokeDashoffset="0" strokeLinecap="round" />
+                      )}
+                      {s && s.mediumPct > 0 && (
+                        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#facc15" strokeWidth="3.5"
+                          strokeDasharray={`${s.mediumPct} ${100 - s.mediumPct}`}
+                          strokeDashoffset={`${-(s.highPct)}`} strokeLinecap="round" />
+                      )}
+                    </svg>
+                    <div className="absolute text-center">
+                      <div className="text-2xl font-bold">{s?.highSeverity ?? 0}</div>
+                      <div className="text-[10px] uppercase font-mono text-text-secondary">High Risk</div>
+                    </div>
+                  </div>
+                  <div className="mt-6 space-y-3">
+                    {[
+                      { label: "High",   color: "bg-red-500",    pct: s?.highPct   ?? 0 },
+                      { label: "Medium", color: "bg-yellow-400",  pct: s?.mediumPct ?? 0 },
+                      { label: "Low",    color: "bg-green-400",   pct: s?.lowPct    ?? 0 },
+                    ].map(({ label, color, pct }) => (
+                      <div key={label} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2"><div className={`w-3 h-3 ${color} rounded-full`} />{label}</div>
+                        <span className="font-bold">{pct}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent Detection Tasks Table */}
+              <div className="bg-white rounded-2xl shadow-soft border border-border-light overflow-hidden">
+                <div className="px-8 py-6 border-b border-border-light flex justify-between items-center">
+                  <h3 className="font-heading font-bold">Recent Detection Analyses</h3>
+                  <Link href="/upload" className="text-sm font-bold text-brand-primary hover:underline">+ New Analysis</Link>
+                </div>
+
+                {history.length === 0 ? (
+                  <div className="px-8 py-16 text-center text-text-secondary">
+                    <p className="mb-4">No detection history yet.</p>
+                    <Link href="/upload" className="text-brand-primary font-bold hover:underline">Run your first analysis →</Link>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="text-[10px] font-mono text-text-secondary uppercase bg-neutral-surface border-b border-border-light">
+                          <th className="px-8 py-4">Report ID</th>
+                          <th className="px-8 py-4">File</th>
+                          <th className="px-8 py-4">Engine</th>
+                          <th className="px-8 py-4">Status</th>
+                          <th className="px-8 py-4">Detections</th>
+                          <th className="px-8 py-4">Timestamp</th>
+                          <th className="px-8 py-4">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border-light">
+                        {history.slice(0, 10).map((entry, idx) => {
+                          const r = entry.result as any;
+                          const isLast = idx === 0;
+                          return (
+                            <tr key={entry.id} className="hover:bg-neutral-surface transition-colors">
+                              <td className="px-8 py-5 text-sm font-mono">#{entry.id}</td>
+                              <td className="px-8 py-5 text-sm max-w-[140px] truncate" title={entry.fileName}>{entry.fileName}</td>
+                              <td className="px-8 py-5 text-sm capitalize">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${entry.engine === "traffic" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>
+                                  {entry.engine}
+                                </span>
+                              </td>
+                              <td className="px-8 py-5">
+                                <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-[10px] font-bold">COMPLETED</span>
+                              </td>
+                              <td className="px-8 py-5 text-sm font-bold">{r.total_detections ?? "—"}</td>
+                              <td className="px-8 py-5 text-sm text-text-secondary">{relativeTime(entry.timestamp)}</td>
+                              <td className="px-8 py-5">
+                                {isLast ? (
+                                  <Link href="/results" className="text-brand-primary hover:underline text-sm font-bold">Details</Link>
+                                ) : (
+                                  <span className="text-gray-300 text-sm font-bold">Details</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </main>
+      <div className="lg:ml-64">
+        <AppFooter />
+      </div>
+    </>
+  );
 }

@@ -17,6 +17,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from config import UPLOAD_PATH
 from ml.detection import assess_road_image, assess_road_video, encode_image_to_base64, get_device
 from models.schemas import ImageAssessmentResponse, VideoAssessmentResponse
+from routers.stats import record_detection
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/detect", tags=["Detection"])
@@ -78,7 +79,7 @@ async def detect_image(
         clean_det = {k: v for k, v in det.items() if k != "position"}
         clean_detections.append(clean_det)
 
-    return ImageAssessmentResponse(
+    response = ImageAssessmentResponse(
         success=True,
         total_detections=result.get("total_detections", 0),
         detections=clean_detections,
@@ -87,6 +88,16 @@ async def detect_image(
         annotated_image_base64=annotated_b64,
         message=result.get("message", ""),
     )
+
+    # Update session-scoped stats
+    record_detection(
+        engine="road",
+        total_detections=response.total_detections,
+        priority_counts=result.get("priority_counts", {}),
+        class_counts={det.class_name: 1 for det in response.detections},
+    )
+
+    return response
 
 
 @router.post("/video", response_model=VideoAssessmentResponse)
@@ -133,13 +144,24 @@ async def detect_video(
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("message", "Video processing failed"))
 
-        return VideoAssessmentResponse(
+        response = VideoAssessmentResponse(
             success=True,
             total_frames_analyzed=result.get("total_frames_analyzed", 0),
             total_detections=result.get("total_detections", 0),
             summary=result.get("summary", {}),
             message=result.get("message", ""),
         )
+
+        # Update session-scoped stats
+        summary = result.get("summary", {})
+        record_detection(
+            engine="road",
+            total_detections=response.total_detections,
+            priority_counts=summary.get("priority_counts", {}),
+            class_counts=summary.get("class_counts", {}),
+        )
+
+        return response
 
     finally:
         # Cleanup temp file

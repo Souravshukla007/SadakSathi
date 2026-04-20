@@ -121,9 +121,10 @@ def create_app() -> FastAPI:
     )
 
     # ── CORS ──
+    all_origins = list(set(settings.CORS_ORIGINS + settings.EXTRA_CORS_ORIGINS))
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
+        allow_origins=all_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -134,11 +135,13 @@ def create_app() -> FastAPI:
     from routers.detection   import router as detection_router
     from routers.duplication import router as duplication_router
     from routers.traffic     import router as traffic_router
+    from routers.stats       import router as stats_router
 
     app.include_router(health_router)
     app.include_router(detection_router)
     app.include_router(duplication_router)
-    app.include_router(traffic_router)   # NEW — traffic violation endpoints
+    app.include_router(traffic_router)
+    app.include_router(stats_router)     # NEW — session-scoped detection aggregates
 
     return app
 

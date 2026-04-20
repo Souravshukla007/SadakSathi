@@ -15,7 +15,14 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # --- CORS ---
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    # LOCAL: localhost. PRODUCTION: your Vercel URL is always allowed.
+    # Add any additional origins (staging, preview) via EXTRA_CORS_ORIGINS env var.
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://sadak-sathi-chi.vercel.app",
+    ]
+    EXTRA_CORS_ORIGINS: list[str] = []  # set in env for staging/preview URLs
 
     # --- Road Hazard Model ---
     # Detects: pothole, garbage, overflow_garbage, manhole_cover,
