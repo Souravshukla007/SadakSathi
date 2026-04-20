@@ -160,10 +160,7 @@ def create_app() -> FastAPI:
     app.include_router(detection_router)
     app.include_router(duplication_router)
     app.include_router(traffic_router)
-<<<<<<< HEAD
     app.include_router(stats_router)     # NEW — session-scoped detection aggregates
-=======
->>>>>>> dce390be67b17a7d919ce68997b1e8770fb3d3ae
 
     return app
 

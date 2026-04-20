@@ -16,8 +16,6 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.2.0"
     DEBUG: bool = False
 
-    # --- CORS ---
-<<<<<<< HEAD
     # LOCAL: localhost. PRODUCTION: your Vercel URL is always allowed.
     # Add any additional origins (staging, preview) via EXTRA_CORS_ORIGINS env var.
     CORS_ORIGINS: list[str] = [
@@ -26,22 +24,17 @@ class Settings(BaseSettings):
         "https://sadak-sathi-chi.vercel.app",
     ]
     EXTRA_CORS_ORIGINS: list[str] = []  # set in env for staging/preview URLs
-=======
-    # Override via env var for production, e.g.:
-    #   CORS_ORIGINS=["https://your-domain.vercel.app","https://custom.domain"]
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
->>>>>>> dce390be67b17a7d919ce68997b1e8770fb3d3ae
 
     # --- Road Hazard Model ---
     # Detects: pothole, garbage, overflow_garbage, manhole_cover,
     #          broken_sign, broken_street_light, fallen_tree
-    MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "best_whole_model_nano.pt")
+    MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "Municipal_model_nano.pt")
     CONF_THRESHOLD: float = 0.25  # Default confidence threshold
     DEVICE: str = "auto"           # "auto" | "cpu" | "cuda"
 
     # --- Traffic Violation Model ---
     # Detects: helmet, no_helmet, number_plate, triple_riding, wrong_side_moving
-    TRAFFIC_MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "traffic_model_nano_worse.pt")
+    TRAFFIC_MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "traffic_model-W.pt")
 
     # --- Object Tracking (Traffic Video) ---
     # "bytetrack.yaml" or "botsort.yaml" — Ultralytics built-in trackers
