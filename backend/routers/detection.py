@@ -15,9 +15,11 @@ import uuid
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
 from config import UPLOAD_PATH
-from ml.detection import assess_road_image, assess_road_video, encode_image_to_base64, get_device
 from models.schemas import ImageAssessmentResponse, VideoAssessmentResponse
 from routers.stats import record_detection
+
+# NOTE: ml.detection imports are deferred to function level so the router module
+# can be imported in lightweight environments (CI) where torch is not installed.
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/detect", tags=["Detection"])
@@ -44,6 +46,8 @@ async def detect_image(
     model = getattr(request.app.state, "model", None)
     if model is None:
         raise HTTPException(status_code=503, detail="ML model not loaded. Please place a .pt model file and restart.")
+
+    from ml.detection import assess_road_image, encode_image_to_base64, get_device
 
     # Validate file type
     content_type = file.content_type or ""
@@ -115,6 +119,8 @@ async def detect_video(
     model = getattr(request.app.state, "model", None)
     if model is None:
         raise HTTPException(status_code=503, detail="ML model not loaded.")
+
+    from ml.detection import assess_road_video, get_device
 
     content_type = file.content_type or ""
     if not content_type.startswith("video/"):

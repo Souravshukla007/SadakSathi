@@ -15,13 +15,13 @@ export async function POST(req: Request) {
 
         // Handle hard-coded credentials for municipal and traffic authorities
         if (authorityType === 'municipal' || authorityType === 'traffic') {
-            console.log('🔍 Authority login attempt:', { email, password, authorityType });
+
             
             const credentials = validateCredentials(email, password);
-            console.log('🔍 Credentials validation result:', credentials);
+
             
             if (!credentials) {
-                console.log('❌ Invalid credentials for authority access');
+
                 return NextResponse.json({ message: 'Invalid credentials for authority access' }, { status: 401 });
             }
 
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
 
             // Determine redirect URL based on role
             const redirectUrl = credentials.role === 'municipal' ? '/Municipal' : '/dashboard/traffic';
-            console.log('🚀 Authority login successful:', { role: credentials.role, redirectUrl });
+
 
             const response = NextResponse.json({ 
                 message: 'Authority login successful',

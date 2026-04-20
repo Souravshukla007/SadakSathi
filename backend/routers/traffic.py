@@ -15,14 +15,11 @@ import uuid
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
 from config import UPLOAD_PATH
-from ml.traffic import (
-    assess_traffic_image,
-    assess_traffic_video,
-    encode_image_to_base64,
-    get_traffic_device,
-)
 from models.schemas import TrafficAssessmentResponse, TrafficDetection, TrafficVideoAssessmentResponse
 from routers.stats import record_detection
+
+# NOTE: ml.traffic imports are deferred to function level so the router module
+# can be imported in lightweight environments (CI) where torch is not installed.
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/detect/traffic", tags=["Traffic Detection"])
@@ -66,6 +63,8 @@ async def detect_traffic_image(
                 "Place traffic_model.pt in backend/ and restart the server."
             ),
         )
+
+    from ml.traffic import assess_traffic_image, encode_image_to_base64, get_traffic_device
 
     # ── Validate content type ──
     content_type = file.content_type or ""
@@ -177,6 +176,8 @@ async def detect_traffic_video(
                 "Place traffic_model.pt in backend/ and restart the server."
             ),
         )
+
+    from ml.traffic import assess_traffic_video, get_traffic_device
 
     content_type = file.content_type or ""
     if not content_type.startswith("video/"):

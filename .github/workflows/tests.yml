@@ -44,4 +44,5 @@ jobs:
           pip install -r backend/requirements-test.txt
 
       - name: Run backend tests
-        run: pytest backend/tests
+        working-directory: backend
+        run: pytest tests -v --tb=short

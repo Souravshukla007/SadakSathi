@@ -22,7 +22,7 @@ export async function POST(req: Request) {
 
         const user = await prisma.user.create({
             data: {
-                username: email.split('@')[0] + Math.random().toString(36).substring(7), // temporary unique username fallback
+                username: email.split('@')[0] + '_' + crypto.randomUUID().slice(0, 12),
                 fullName,
                 email,
                 role: role === 'City Administrator' ? 'admin' : (role === 'Maintenance Contractor' ? 'contractor' : 'user'),
