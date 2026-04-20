@@ -1,0 +1,5 @@
+# Tell Git to always treat PyTorch model weights as binary
+# This prevents merge conflicts from corrupting .pt files
+*.pt binary
+*.pth binary
+*.onnx binary
