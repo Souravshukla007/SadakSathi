@@ -10,14 +10,8 @@ const FINE_MAP: Record<string, number> = {
     plate_detection: 500,
 };
 
-// Mock data for when DB is empty
-const MOCK_DETECTIONS = [
-    { id: '1', type: 'helmet_violation', confidence: 98.4, timestamp: new Date(Date.now() - 60000).toISOString(), status: 'challan_issued', challan: { amount: 1000 } },
-    { id: '2', type: 'triple_riding', confidence: 91.2, timestamp: new Date(Date.now() - 120000).toISOString(), status: 'challan_issued', challan: { amount: 1500 } },
-    { id: '3', type: 'wrong_side', confidence: 85.0, timestamp: new Date(Date.now() - 180000).toISOString(), status: 'detected', challan: null },
-    { id: '4', type: 'plate_detection', confidence: 94.7, timestamp: new Date(Date.now() - 240000).toISOString(), status: 'challan_issued', challan: { amount: 500 } },
-    { id: '5', type: 'helmet_violation', confidence: 78.3, timestamp: new Date(Date.now() - 300000).toISOString(), status: 'cleared', challan: null },
-];
+// Initial empty state for when DB is empty
+const INITIAL_DETECTIONS: Detection[] = [];
 
 interface Detection {
     id: string;
@@ -29,14 +23,14 @@ interface Detection {
 }
 
 export default function DetectionStreamTable() {
-    const [detections, setDetections] = useState<Detection[]>(MOCK_DETECTIONS);
+    const [detections, setDetections] = useState<Detection[]>(INITIAL_DETECTIONS);
 
     const fetchDetections = async () => {
         try {
             const res = await fetch('/api/traffic/detections');
             if (!res.ok) return;
             const data = await res.json();
-            if (data.length > 0) setDetections(data);
+            setDetections(data);
         } catch {
             // keep existing data on failure
         }
@@ -75,39 +69,47 @@ export default function DetectionStreamTable() {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border-light">
-                        {detections.map((d) => (
-                            <tr key={d.id} className="hover:bg-neutral-surface/50 transition-colors">
-                                <td className="px-8 py-4 text-xs font-mono text-text-secondary whitespace-nowrap">
-                                    {formatTime(d.timestamp)}
-                                </td>
-                                <td className="px-8 py-4">
-                                    <ViolationTypeBadge type={d.type} />
-                                </td>
-                                <td className="px-8 py-4">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm font-bold">{d.confidence.toFixed(1)}%</span>
-                                        <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                            <div
-                                                className={`h-full rounded-full ${d.confidence >= 90 ? 'bg-red-500' : 'bg-yellow-400'}`}
-                                                style={{ width: `${d.confidence}%` }}
-                                            />
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="px-8 py-4">
-                                    <ViolationBadge status={d.status} />
-                                </td>
-                                <td className="px-8 py-4 text-sm font-bold">
-                                    {d.challan ? (
-                                        <span className="text-red-600">₹{d.challan.amount.toLocaleString('en-IN')}</span>
-                                    ) : d.confidence >= 90 ? (
-                                        <span className="text-yellow-500">₹{FINE_MAP[d.type] ?? '—'} (pending)</span>
-                                    ) : (
-                                        <span className="text-text-secondary/50">—</span>
-                                    )}
+                        {detections.length === 0 ? (
+                            <tr>
+                                <td colSpan={5} className="px-8 py-12 text-center text-text-secondary font-medium">
+                                    No live detections stream data available yet.
                                 </td>
                             </tr>
-                        ))}
+                        ) : (
+                            detections.map((d) => (
+                                <tr key={d.id} className="hover:bg-neutral-surface/50 transition-colors">
+                                    <td className="px-8 py-4 text-xs font-mono text-text-secondary whitespace-nowrap">
+                                        {formatTime(d.timestamp)}
+                                    </td>
+                                    <td className="px-8 py-4">
+                                        <ViolationTypeBadge type={d.type} />
+                                    </td>
+                                    <td className="px-8 py-4">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-bold">{d.confidence.toFixed(1)}%</span>
+                                            <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full rounded-full ${d.confidence >= 90 ? 'bg-red-500' : 'bg-yellow-400'}`}
+                                                    style={{ width: `${d.confidence}%` }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-8 py-4">
+                                        <ViolationBadge status={d.status} />
+                                    </td>
+                                    <td className="px-8 py-4 text-sm font-bold">
+                                        {d.challan ? (
+                                            <span className="text-red-600">₹{d.challan.amount.toLocaleString('en-IN')}</span>
+                                        ) : d.confidence >= 90 ? (
+                                            <span className="text-yellow-500">₹{FINE_MAP[d.type] ?? '—'} (pending)</span>
+                                        ) : (
+                                            <span className="text-text-secondary/50">—</span>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))
+                        )}
                     </tbody>
                 </table>
             </div>

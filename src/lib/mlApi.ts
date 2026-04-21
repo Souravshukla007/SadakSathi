@@ -310,3 +310,44 @@ export function relativeTime(isoString: string): string {
   if (diff < 86400) return `${Math.floor(diff / 3600)} hrs ago`;
   return `${Math.floor(diff / 86400)} days ago`;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Complaint Prefill Helpers
+//  Used to pass AI detection results from /results → /complaints modal.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ComplaintPrefill {
+  /** Full data-URL: "data:image/jpeg;base64,..." */
+  imageDataUrl: string;
+  engine: "road" | "traffic";
+  fileName: string;
+  /** All unique class names detected (snake_case) */
+  detectedClasses: string[];
+}
+
+const PREFILL_KEY = "sadaksathi_complaintPrefill";
+
+export function saveComplaintPrefill(data: ComplaintPrefill): void {
+  try {
+    sessionStorage.setItem(PREFILL_KEY, JSON.stringify(data));
+  } catch {
+    // Storage quota exceeded — silently ignore
+  }
+}
+
+export function getComplaintPrefill(): ComplaintPrefill | null {
+  try {
+    const raw = sessionStorage.getItem(PREFILL_KEY);
+    return raw ? (JSON.parse(raw) as ComplaintPrefill) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearComplaintPrefill(): void {
+  try {
+    sessionStorage.removeItem(PREFILL_KEY);
+  } catch {
+    // noop
+  }
+}

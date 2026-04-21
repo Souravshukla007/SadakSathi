@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, DragEvent } from "react";
-import { useRouter } from "next/navigation";
-import { MapPin, Loader2, Search, ChevronDown, ThumbsUp, X, AlertCircle, CheckCircle, UploadCloud } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { MapPin, Loader2, Search, ChevronDown, ThumbsUp, X, AlertCircle, CheckCircle, UploadCloud, Zap } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
+import { getComplaintPrefill, clearComplaintPrefill } from "@/lib/mlApi";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -73,7 +74,8 @@ const SORT_OPTIONS = [
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ComplaintsPage() {
-  const router = useRouter();
+  const router       = useRouter();
+  const searchParams = useSearchParams();
 
   // Feed state
   const [complaints, setComplaints] = useState<Complaint[]>([]);
@@ -106,11 +108,51 @@ export default function ComplaintsPage() {
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [mediaType, setMediaType]       = useState<"image" | "video" | null>(null);
   const [isDragging, setIsDragging]     = useState(false);
+  const [mediaFileName, setMediaFileName] = useState<string | null>(null);  // display name for prefilled images
+  const [prefillSource, setPrefillSource] = useState<string | null>(null); // non-null when image came from AI scan
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Search debounce
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // ── Prefill from AI detection ──────────────────────────────────────────────
+  useEffect(() => {
+    if (searchParams.get("prefill") !== "1") return;
+    const prefill = getComplaintPrefill();
+    if (!prefill) return;
+    clearComplaintPrefill();
+
+    // Map detected classes → issue type
+    const CLASS_TO_ISSUE: Record<string, string> = {
+      pothole: "Pothole", road_crack: "Pothole",
+      garbage: "Garbage Accumulation", garbage_dump: "Garbage Accumulation",
+      open_manhole: "Open Manhole", manhole: "Open Manhole",
+      fallen_tree: "Fallen Tree",
+      broken_light: "Broken Street Light",
+      broken_sign: "Broken Sign",
+      waterlogging: "Waterlogging",
+    };
+    let mapped = "Other";
+    for (const cls of prefill.detectedClasses) {
+      const m = CLASS_TO_ISSUE[cls.toLowerCase()];
+      if (m) { mapped = m; break; }
+    }
+    setIssueType(mapped);
+
+    // Pre-attach the annotated image
+    setMediaPreview(prefill.imageDataUrl);
+    setMediaType("image");
+    setMediaFile(null);
+    setMediaFileName(`AI scan — ${prefill.fileName}`);
+    setPrefillSource(prefill.engine === "traffic" ? "Traffic AI Detection" : "Road Hazard AI Detection");
+
+    // Auto-open the modal
+    setSubmitError(null);
+    setSubmitSuccess(false);
+    setIsModalOpen(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount
 
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -179,7 +221,9 @@ export default function ComplaintsPage() {
     const isImage = file.type.startsWith("image/");
     if (!isImage && !isVideo) return;
     setMediaFile(file);
+    setMediaFileName(file.name);
     setMediaType(isVideo ? "video" : "image");
+    setPrefillSource(null); // user chose their own file
     const reader = new FileReader();
     reader.onload = (e) => setMediaPreview(e.target?.result as string);
     reader.readAsDataURL(file);
@@ -196,6 +240,8 @@ export default function ComplaintsPage() {
     setMediaFile(null);
     setMediaPreview(null);
     setMediaType(null);
+    setMediaFileName(null);
+    setPrefillSource(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -466,6 +512,15 @@ export default function ComplaintsPage() {
                 {/* Media Upload */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Evidence Photo / Video <span className="font-normal normal-case text-text-secondary">(optional)</span></label>
+
+                  {/* AI Prefill Banner */}
+                  {prefillSource && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 mb-1">
+                      <Zap className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
+                      <span>Image auto-attached from <strong>{prefillSource}</strong>. You can remove it below.</span>
+                    </div>
+                  )}
+
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -508,7 +563,7 @@ export default function ComplaintsPage() {
                         <X className="w-4 h-4" />
                       </button>
                       <div className="px-3 py-1.5 bg-neutral-surface border-t border-border-light text-xs text-text-secondary truncate">
-                        {mediaFile?.name}
+                        {mediaFileName ?? mediaFile?.name ?? "Attached image"}
                       </div>
                     </div>
                   )}

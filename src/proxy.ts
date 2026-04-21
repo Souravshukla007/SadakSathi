@@ -21,6 +21,7 @@ const PROTECTED_ROUTES = [
     '/admin',
     '/unified-detector',
     '/Municipal',
+    '/Traffic',
 ];
 
 /**

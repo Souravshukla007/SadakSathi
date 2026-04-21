@@ -4,8 +4,11 @@ import React, { useEffect, useState } from "react";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   getLastDetection,
+  getDetectionHistory,
   getLastVideoBlobUrl,
   StoredDetection,
   ImageAssessmentResponse,
@@ -13,7 +16,30 @@ import {
   SingleDetection,
   TrafficDetection,
   relativeTime,
+  saveComplaintPrefill,
 } from "@/lib/mlApi";
+
+// Map ML class names to complaint issue types
+const CLASS_TO_ISSUE: Record<string, string> = {
+  pothole:           "Pothole",
+  road_crack:        "Pothole",
+  garbage:           "Garbage Accumulation",
+  garbage_dump:      "Garbage Accumulation",
+  open_manhole:      "Open Manhole",
+  manhole:           "Open Manhole",
+  fallen_tree:       "Fallen Tree",
+  broken_light:      "Broken Street Light",
+  broken_sign:       "Broken Sign",
+  waterlogging:      "Waterlogging",
+};
+
+function classToIssueType(classes: string[]): string {
+  for (const cls of classes) {
+    const mapped = CLASS_TO_ISSUE[cls.toLowerCase()];
+    if (mapped) return mapped;
+  }
+  return "Other";
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -44,12 +70,42 @@ function downloadJSON(data: unknown, filename: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ResultsPage() {
+  const router       = useRouter();
+  const searchParams = useSearchParams();
   const [stored, setStored] = useState<StoredDetection | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
 
+  // ── Submit Complaint handler ──────────────────────────────────────────────
+  const handleSubmitComplaint = () => {
+    if (!stored) return;
+    const result = stored.result as any;
+    const annotatedB64: string | null = result.annotated_image_base64 ?? null;
+    const detections: any[] = result.detections ?? result.violations ?? [];
+    const classes = [...new Set(detections.map((d: any) => d.class_name ?? "").filter(Boolean))];
+
+    // Use annotated image if available, otherwise nothing — still let user attach manually
+    if (annotatedB64) {
+      saveComplaintPrefill({
+        imageDataUrl: `data:image/jpeg;base64,${annotatedB64}`,
+        engine:       stored.engine,
+        fileName:     stored.fileName,
+        detectedClasses: classes,
+      });
+    }
+    router.push("/complaints?prefill=1");
+  };
+
   useEffect(() => {
-    setStored(getLastDetection());
+    const engineFilter = searchParams.get("engine");
+    if (engineFilter) {
+      const history = getDetectionHistory();
+      const filtered = history.find(d => d.engine === engineFilter);
+      setStored(filtered || null);
+    } else {
+      setStored(getLastDetection());
+    }
+    
     setVideoBlobUrl(getLastVideoBlobUrl());
     setLoaded(true);
 
@@ -152,7 +208,27 @@ export default function ResultsPage() {
                   {stored.fileName} · {relativeTime(stored.timestamp)} · {isTraffic ? "Traffic" : "Road Hazard"} Engine
                 </p>
               </div>
-              <div className="flex gap-4">
+              <div className="flex flex-wrap gap-3">
+                {/* Submit Complaint — only for road hazard detections */}
+                {!isTraffic && (
+                  <button
+                    onClick={handleSubmitComplaint}
+                    className="px-6 py-3 bg-brand-primary text-text-primary font-bold rounded-sm flex items-center gap-2 hover:opacity-90 hover:-translate-y-0.5 transition-all shadow-soft"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                    SUBMIT COMPLAINT
+                  </button>
+                )}
+                {/* Submit Complaint for traffic too */}
+                {isTraffic && (
+                  <button
+                    onClick={handleSubmitComplaint}
+                    className="px-6 py-3 bg-red-500 text-white font-bold rounded-sm flex items-center gap-2 hover:opacity-90 hover:-translate-y-0.5 transition-all shadow-soft"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                    REPORT VIOLATION
+                  </button>
+                )}
                 <button
                   onClick={() => downloadJSON(stored.result, `sadaksathi-${stored.id}.json`)}
                   className="px-6 py-3 bg-white border border-border-light text-text-primary font-bold rounded-sm flex items-center gap-2 hover:bg-gray-50 transition-colors"

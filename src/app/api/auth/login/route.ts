@@ -34,7 +34,7 @@ export async function POST(req: Request) {
             });
 
             // Determine redirect URL based on role
-            const redirectUrl = credentials.role === 'municipal' ? '/Municipal' : '/dashboard/traffic';
+            const redirectUrl = credentials.role === 'municipal' ? '/Municipal' : '/Traffic';
 
 
             const response = NextResponse.json({ 

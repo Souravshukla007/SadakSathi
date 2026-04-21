@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import DownloadAppButton from "@/components/app-download/DownloadAppButton";
 import DownloadAppModal from "@/components/app-download/DownloadAppModal";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
@@ -32,6 +32,8 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
     const [isLoading, setIsLoading] = useState(true);
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
     const router = useRouter();
+    const pathname = usePathname();
+    const isAuthorityDashboard = pathname?.startsWith('/Municipal') || pathname?.startsWith('/Traffic');
 
     useEffect(() => {
         const checkAuth = async () => {
@@ -102,7 +104,7 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
                     <Link href="/" className={navLinkClass}>Home</Link>
                     <Link href="/traffic-violations" className={navLinkClass}>Traffic AI</Link>
                     <Link href="/upload"             className={navLinkClass}>AI Detector</Link>
-                    {!isLoading && isLoggedIn && (
+                    {!isLoading && isLoggedIn && !isAuthorityDashboard && (
                         <>
                             <Link href="/complaints"  className={navLinkClass}>Complaints</Link>
                             <Link href="/leaderboard" className={navLinkClass}>Leaderboard</Link>
@@ -117,9 +119,11 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
                     {!isLoading && isLoggedIn ? (
                         <>
                             <button onClick={triggerLogout} className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap">Logout</button>
-                            <Link href="/my-account" className="px-4 py-2 bg-text-primary text-white font-medium text-sm rounded-lg hover:shadow-soft transition-all hover:-translate-y-0.5 whitespace-nowrap">
-                                My Account
-                            </Link>
+                            {!isAuthorityDashboard && (
+                                <Link href="/my-account" className="px-4 py-2 bg-text-primary text-white font-medium text-sm rounded-lg hover:shadow-soft transition-all hover:-translate-y-0.5 whitespace-nowrap">
+                                    My Account
+                                </Link>
+                            )}
                         </>
                     ) : !isLoading && (
                         <>
@@ -149,7 +153,7 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
                     <Link href="/" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Home</Link>
                     <Link href="/traffic-violations" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Traffic AI</Link>
                     <Link href="/upload"             className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>AI Detector</Link>
-                    {!isLoading && isLoggedIn && (
+                    {!isLoading && isLoggedIn && !isAuthorityDashboard && (
                         <>
                             <Link href="/complaints"  className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Complaints</Link>
                             <Link href="/leaderboard" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Leaderboard</Link>
@@ -162,7 +166,9 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
 
                     {!isLoading && isLoggedIn ? (
                         <>
-                            <Link href="/my-account" className="py-3 text-sm font-medium text-text-primary border-b border-border-light" onClick={() => setMobileMenuOpen(false)}>My Account</Link>
+                            {!isAuthorityDashboard && (
+                                <Link href="/my-account" className="py-3 text-sm font-medium text-text-primary border-b border-border-light" onClick={() => setMobileMenuOpen(false)}>My Account</Link>
+                            )}
                             <button onClick={() => { setMobileMenuOpen(false); triggerLogout(); }} className="py-3 text-sm font-medium text-red-500 text-left">Logout</button>
                         </>
                     ) : !isLoading && (

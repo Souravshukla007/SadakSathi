@@ -25,12 +25,14 @@ interface DashboardStats {
 }
 
 function computeStats(history: StoredDetection[]): DashboardStats {
+  // Only count road-engine detections for municipal dashboard
+  const roadHistory = history.filter(e => e.engine === "road");
   let potholesDetected = 0;
   let highSeverity = 0;
   let mediumCount  = 0;
   let lowCount     = 0;
 
-  for (const entry of history) {
+  for (const entry of roadHistory) {
     const r = entry.result as any;
     const pc = r.priority_counts ?? r.summary?.priority_counts ?? {};
     const cc = r.class_counts   ?? r.summary?.class_counts   ?? {};
@@ -43,19 +45,18 @@ function computeStats(history: StoredDetection[]): DashboardStats {
 
   const total = highSeverity + mediumCount + lowCount;
 
-  // Last 7 runs → detection count for bar chart
-  const last7 = history.slice(0, 7).reverse();
+  // Last 7 road runs → detection count for bar chart
+  const last7 = roadHistory.slice(0, 7).reverse();
   const barData = last7.map((e) => (e.result as any).total_detections ?? 0);
-  // Pad to 7 bars
   while (barData.length < 7) barData.unshift(0);
 
   const maxBar = Math.max(...barData, 1);
 
   return {
-    totalUploads:    history.length,
+    totalUploads:    roadHistory.length,
     potholesDetected,
     highSeverity,
-    barData:         barData.map((v) => Math.round((v / maxBar) * 100)), // percentages for bar height
+    barData:         barData.map((v) => Math.round((v / maxBar) * 100)),
     highPct:         total > 0 ? Math.round((highSeverity / total) * 100) : 0,
     mediumPct:       total > 0 ? Math.round((mediumCount  / total) * 100) : 0,
     lowPct:          total > 0 ? Math.round((lowCount     / total) * 100) : 0,
@@ -63,6 +64,34 @@ function computeStats(history: StoredDetection[]): DashboardStats {
 }
 
 const DAY_LABELS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+
+// ── Complaint type from API ────────────────────────────────────────────────────
+interface Complaint {
+  id: string;
+  issueType: string;
+  description: string;
+  street: string;
+  city: string;
+  state: string;
+  status: string;
+  evidenceUrl: string | null;
+  createdAt: string;
+  upvoteCount: number;
+  submittedBy: string;
+}
+
+function statusStyle(status: string) {
+  switch (status) {
+    case "Submitted":  return "bg-yellow-100 text-yellow-700";
+    case "Approved":   return "bg-blue-100 text-blue-700";
+    case "OnHold":     return "bg-orange-100 text-orange-700";
+    case "Rejected":   return "bg-red-100 text-red-700";
+    case "Completed":
+    case "ResolvedReviewed": return "bg-green-100 text-green-700";
+    default:           return "bg-gray-100 text-gray-600";
+  }
+}
+function statusLabel(s: string) { return s === "ResolvedReviewed" ? "Resolved" : s; }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -72,6 +101,8 @@ export default function UserDashboardPage() {
   const [stats, setStats]       = useState<DashboardStats | null>(null);
   const [loaded, setLoaded]     = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [complaintsLoading, setComplaintsLoading] = useState(true);
 
   useEffect(() => {
     // Auth check
@@ -89,11 +120,25 @@ export default function UserDashboardPage() {
     };
     checkAuth();
 
-    // Load detection history from sessionStorage
+    // Load road-engine detection history from sessionStorage
     const h = getDetectionHistory();
     setHistory(h);
     setStats(computeStats(h));
     setLoaded(true);
+
+    // Fetch submitted complaints from DB
+    const fetchComplaints = async () => {
+      try {
+        const res = await fetch("/api/complaints/feed?sort=newest");
+        if (res.ok) {
+          const data = await res.json();
+          setComplaints(data);
+        }
+      } catch { /* noop */ } finally {
+        setComplaintsLoading(false);
+      }
+    };
+    fetchComplaints();
 
     // Scroll animations
     const observer = new IntersectionObserver(
@@ -152,7 +197,7 @@ export default function UserDashboardPage() {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
                 Run Detection
               </Link>
-              <Link href="/results" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
+              <Link href="/results?engine=road" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                 Last Report
               </Link>
@@ -296,60 +341,65 @@ export default function UserDashboardPage() {
                 </div>
               </div>
 
-              {/* Recent Detection Tasks Table */}
+              {/* Recent Submitted Complaints — Road Hazard */}
               <div className="bg-white rounded-2xl shadow-soft border border-border-light overflow-hidden">
                 <div className="px-8 py-6 border-b border-border-light flex justify-between items-center">
-                  <h3 className="font-heading font-bold">Recent Detection Analyses</h3>
-                  <Link href="/upload" className="text-sm font-bold text-brand-primary hover:underline">+ New Analysis</Link>
+                  <div>
+                    <h3 className="font-heading font-bold">Recent Submitted Complaints</h3>
+                    <p className="text-xs text-text-secondary mt-0.5">Road Hazard Reports — from citizen submissions</p>
+                  </div>
+                  <Link href="/complaints" className="text-sm font-bold text-brand-primary hover:underline">View All →</Link>
                 </div>
 
-                {history.length === 0 ? (
+                {complaintsLoading ? (
+                  <div className="px-8 py-10 flex justify-center">
+                    <div className="animate-spin w-6 h-6 border-3 border-brand-primary border-t-transparent rounded-full" />
+                  </div>
+                ) : complaints.length === 0 ? (
                   <div className="px-8 py-16 text-center text-text-secondary">
-                    <p className="mb-4">No detection history yet.</p>
-                    <Link href="/upload" className="text-brand-primary font-bold hover:underline">Run your first analysis →</Link>
+                    <p className="mb-4">No complaints submitted yet.</p>
+                    <Link href="/complaints" className="text-brand-primary font-bold hover:underline">View Complaints Page →</Link>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left">
                       <thead>
                         <tr className="text-[10px] font-mono text-text-secondary uppercase bg-neutral-surface border-b border-border-light">
-                          <th className="px-8 py-4">Report ID</th>
-                          <th className="px-8 py-4">File</th>
-                          <th className="px-8 py-4">Engine</th>
-                          <th className="px-8 py-4">Status</th>
-                          <th className="px-8 py-4">Detections</th>
-                          <th className="px-8 py-4">Timestamp</th>
-                          <th className="px-8 py-4">Action</th>
+                          <th className="px-6 py-4">Issue Type</th>
+                          <th className="px-6 py-4">Location</th>
+                          <th className="px-6 py-4">Reported By</th>
+                          <th className="px-6 py-4">Engine</th>
+                          <th className="px-6 py-4">Status</th>
+                          <th className="px-6 py-4">Upvotes</th>
+                          <th className="px-6 py-4">Submitted</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border-light">
-                        {history.slice(0, 10).map((entry, idx) => {
-                          const r = entry.result as any;
-                          const isLast = idx === 0;
-                          return (
-                            <tr key={entry.id} className="hover:bg-neutral-surface transition-colors">
-                              <td className="px-8 py-5 text-sm font-mono">#{entry.id}</td>
-                              <td className="px-8 py-5 text-sm max-w-[140px] truncate" title={entry.fileName}>{entry.fileName}</td>
-                              <td className="px-8 py-5 text-sm capitalize">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${entry.engine === "traffic" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>
-                                  {entry.engine}
-                                </span>
-                              </td>
-                              <td className="px-8 py-5">
-                                <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-[10px] font-bold">COMPLETED</span>
-                              </td>
-                              <td className="px-8 py-5 text-sm font-bold">{r.total_detections ?? "—"}</td>
-                              <td className="px-8 py-5 text-sm text-text-secondary">{relativeTime(entry.timestamp)}</td>
-                              <td className="px-8 py-5">
-                                {isLast ? (
-                                  <Link href="/results" className="text-brand-primary hover:underline text-sm font-bold">Details</Link>
-                                ) : (
-                                  <span className="text-gray-300 text-sm font-bold">Details</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
+                        {complaints.slice(0, 10).map((c) => (
+                          <tr key={c.id} className="hover:bg-neutral-surface transition-colors">
+                            <td className="px-6 py-4">
+                              <span className="text-sm font-semibold text-text-primary">{c.issueType}</span>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-text-secondary max-w-[160px] truncate">
+                              {c.street ? `${c.street}, ` : ""}{c.city}, {c.state}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-text-secondary">{c.submittedBy}</td>
+                            <td className="px-6 py-4">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-100 text-blue-700">
+                                Road
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${statusStyle(c.status)}`}>
+                                {statusLabel(c.status)}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-sm font-bold text-text-primary">{c.upvoteCount}</td>
+                            <td className="px-6 py-4 text-sm text-text-secondary">
+                              {new Date(c.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" })}
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>

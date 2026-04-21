@@ -136,7 +136,7 @@ export default function TrafficChatPage() {
                     <div className="w-80 bg-white border-r border-border-light flex flex-col h-full z-10 shadow-soft">
                         <div className="p-4 border-b border-border-light flex items-center justify-between">
                             <h2 className="font-heading font-bold flex items-center gap-2">
-                                <Link href="/dashboard/traffic" className="text-text-secondary hover:text-brand-primary">
+                                <Link href="/Traffic" className="text-text-secondary hover:text-brand-primary">
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                                 </Link>
                                 Traffic Inbox
