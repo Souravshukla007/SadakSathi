@@ -11,6 +11,7 @@ import ProfileHeader from '@/components/account/ProfileHeader';
 import ProfileStats from '@/components/account/ProfileStats';
 import ProfileForm from '@/components/account/ProfileForm';
 import SecuritySettings from '@/components/account/SecuritySettings';
+import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 import NotificationSettings from '@/components/account/NotificationSettings';
 import ActivityTable from '@/components/account/ActivityTable';
 
@@ -50,7 +51,7 @@ function Sidebar({ user, onLogout }: { user: UserProfile | null; onLogout: () =>
         { href: '/Municipal', label: 'Dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
         { href: '/complaints', label: 'Complaints', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
         { href: '/leaderboard', label: 'Leaderboard', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
-        { href: '/dashboard/traffic', label: 'Traffic AI', icon: 'M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z' },
+
         { href: '/performance', label: 'Analytics', icon: 'M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
         { href: '/my-account', label: 'My Account', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', active: true },
     ];
@@ -130,6 +131,7 @@ export default function AccountPage() {
     const [activities, setActivities] = useState<Activity[]>([]);
     const [loading, setLoading] = useState(true);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
     useEffect(() => {
         (async () => {
@@ -153,6 +155,10 @@ export default function AccountPage() {
         await fetch('/api/auth/logout', { method: 'POST' });
         router.push('/');
         router.refresh();
+    };
+
+    const triggerLogout = () => {
+        setShowLogoutConfirm(true);
     };
 
     const handleDeleteAccount = async () => {
@@ -179,9 +185,14 @@ export default function AccountPage() {
         <>
             <Toaster position="top-center" />
             <AppHeader dashboardMode />
+            <LogoutConfirmModal 
+                isOpen={showLogoutConfirm} 
+                onClose={() => setShowLogoutConfirm(false)} 
+                onConfirm={handleLogout} 
+            />
             <main className="flex-grow pt-16">
                 <div className="flex min-h-screen bg-neutral-surface">
-                    <Sidebar user={user} onLogout={handleLogout} />
+                    <Sidebar user={user} onLogout={triggerLogout} />
 
                     <div className="flex-grow lg:ml-64 p-6 lg:p-8">
                         <div className="max-w-5xl mx-auto space-y-6">

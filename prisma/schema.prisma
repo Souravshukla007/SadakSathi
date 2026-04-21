@@ -91,7 +91,9 @@ model DetectionResult {
 
 model ChatThread {
   id          String        @id @default(cuid())
-  complaintId String
+  complaintId String?
+  userId      String
+  department  String
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   messages    ChatMessage[]

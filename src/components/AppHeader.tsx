@@ -69,7 +69,7 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
     };
 
     /** Shared link class */
-    const navLinkClass = "px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary rounded-md transition-colors flex items-center gap-1";
+    const navLinkClass = "px-3 py-2 text-sm font-medium text-text-secondary hover:text-text-primary rounded-md transition-colors flex items-center gap-1 whitespace-nowrap";
     const mobileLinkClass = "py-3 text-sm font-medium text-text-primary border-b border-border-light flex items-center gap-1.5";
 
     /** Lock icon shown next to auth-required links for guests */
@@ -90,8 +90,8 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
                     <span className="text-2xl">🛣️</span> SadakSathi
                 </Link>
 
-                {/* Desktop nav — absolutely centered */}
-                <div className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
+                {/* Desktop nav — flex-1 centered, never overlaps right side */}
+                <div className="hidden md:flex flex-1 items-center justify-center gap-0.5 min-w-0">
                     <Link href="/" className={navLinkClass}>Home</Link>
                     <Link href="/traffic-violations" className={navLinkClass}>Traffic AI</Link>
                     <Link href="/upload"             className={navLinkClass}>AI Detector</Link>
@@ -105,20 +105,19 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
                 </div>
 
                 {/* Desktop right-side actions */}
-                <div className="hidden md:flex items-center gap-3">
-                    <LanguageSwitcher />
-                    <DownloadAppButton onClick={() => setShowDownloadModal(true)} />
+                <div className="hidden md:flex items-center gap-2 flex-shrink-0">
+                    <DownloadAppButton onClick={() => setShowDownloadModal(true)} compact />
                     {!isLoading && isLoggedIn ? (
                         <>
-                            <button onClick={handleLogout} className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors">Logout</button>
-                            <Link href="/my-account" className="px-5 py-2.5 bg-text-primary text-white font-medium text-sm rounded-lg hover:shadow-soft transition-all hover:-translate-y-0.5">
+                            <button onClick={handleLogout} className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap">Logout</button>
+                            <Link href="/my-account" className="px-4 py-2 bg-text-primary text-white font-medium text-sm rounded-lg hover:shadow-soft transition-all hover:-translate-y-0.5 whitespace-nowrap">
                                 My Account
                             </Link>
                         </>
                     ) : !isLoading && (
                         <>
                             <Link href="/auth" className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors">Log in</Link>
-                            <Link href="/auth" className="px-5 py-2.5 bg-text-primary text-white font-medium text-sm rounded-lg hover:shadow-soft transition-all hover:-translate-y-0.5">
+                            <Link href="/auth" className="px-4 py-2 bg-text-primary text-white font-medium text-sm rounded-lg hover:shadow-soft transition-all hover:-translate-y-0.5">
                                 Sign up
                             </Link>
                         </>

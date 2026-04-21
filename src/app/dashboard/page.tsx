@@ -9,6 +9,7 @@ import AppFooter from '@/components/AppFooter';
 import StatusBadge from '@/components/dashboard/StatusBadge';
 import VoteButton from '@/components/dashboard/VoteButton';
 import ChatModal from '@/components/dashboard/ChatModal';
+import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 import WelcomeBanner from '@/components/dashboard/WelcomeBanner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -44,8 +45,8 @@ function Sidebar({ user, onLogout }: { user: UserPayload | null; onLogout: () =>
     const navLinks = [
         { href: '/dashboard', label: 'Dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6', active: true },
         { href: '/complaints', label: 'Submit Complaint', icon: 'M12 4v16m8-8H4' },
-        { href: '/leaderboard', label: 'Leaderboard', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
-        { href: '/traffic-violations', label: 'Traffic AI', icon: 'M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z' },
+        { href: '/leaderboard', label: 'Leaderboard', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+        { href: '/dashboard/chat', label: 'Support Chat', icon: 'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z' },
         { href: '/performance', label: 'Analytics', icon: 'M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
     ];
 
@@ -129,6 +130,7 @@ export default function UserDashboardPage() {
     const [search, setSearch] = useState('');
     const [sort, setSort] = useState('newest');
     const [activeTab, setActiveTab] = useState<'my' | 'feed'>('my');
+    const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
     // ── Auth check ──────────────────────────────────────────────────────────
     useEffect(() => {
@@ -151,6 +153,10 @@ export default function UserDashboardPage() {
         await fetch('/api/auth/logout', { method: 'POST' });
         router.push('/');
         router.refresh();
+    };
+
+    const triggerLogout = () => {
+        setShowLogoutConfirm(true);
     };
 
     // ── Fetch my complaints ─────────────────────────────────────────────────
@@ -193,9 +199,14 @@ export default function UserDashboardPage() {
         <>
             <Toaster position="top-center" />
             <AppHeader dashboardMode />
+            <LogoutConfirmModal 
+                isOpen={showLogoutConfirm} 
+                onClose={() => setShowLogoutConfirm(false)} 
+                onConfirm={handleLogout} 
+            />
             <main className="flex-grow pt-16">
                 <div className="flex min-h-screen bg-neutral-surface">
-                    <Sidebar user={user} onLogout={handleLogout} />
+                    <Sidebar user={user} onLogout={triggerLogout} />
 
                     <div className="flex-grow lg:ml-64 p-6 lg:p-8">
                         <div className="max-w-7xl mx-auto">

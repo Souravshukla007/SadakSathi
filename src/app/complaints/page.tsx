@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, DragEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MapPin, Loader2, Search, ChevronDown, ThumbsUp, X, AlertCircle, CheckCircle } from "lucide-react";
+import { MapPin, Loader2, Search, ChevronDown, ThumbsUp, X, AlertCircle, CheckCircle, UploadCloud } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
 
@@ -101,6 +101,13 @@ export default function ComplaintsPage() {
   const [isLocating, setIsLocating]   = useState(false);
   const [locationError, setLocationError] = useState("");
 
+  // Media upload
+  const [mediaFile, setMediaFile]       = useState<File | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+  const [mediaType, setMediaType]       = useState<"image" | "video" | null>(null);
+  const [isDragging, setIsDragging]     = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Search debounce
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -165,16 +172,45 @@ export default function ComplaintsPage() {
     );
   };
 
+  // Handle file selection (from input or drop)
+  const handleFileSelect = (file: File) => {
+    if (!file) return;
+    const isVideo = file.type.startsWith("video/");
+    const isImage = file.type.startsWith("image/");
+    if (!isImage && !isVideo) return;
+    setMediaFile(file);
+    setMediaType(isVideo ? "video" : "image");
+    const reader = new FileReader();
+    reader.onload = (e) => setMediaPreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFileSelect(file);
+  };
+
+  const clearMedia = () => {
+    setMediaFile(null);
+    setMediaPreview(null);
+    setMediaType(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   // Submit complaint
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setSubmitError(null);
     try {
+      const evidenceUrl = mediaType === "image" ? mediaPreview : null;
+      const videoUrl    = mediaType === "video" ? mediaPreview : null;
       const res = await fetch("/api/complaints", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ issueType, description, street, city, state, zipcode, latitude, longitude }),
+        body: JSON.stringify({ issueType, description, street, city, state, zipcode, latitude, longitude, evidenceUrl, videoUrl }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Submission failed");
@@ -182,6 +218,7 @@ export default function ComplaintsPage() {
       // Reset form
       setIssueType("Pothole"); setDescription(""); setStreet(""); setCity("");
       setState(""); setZipcode(""); setLatitude(null); setLongitude(null);
+      clearMedia();
       // Refresh feed and close modal after short delay
       setTimeout(() => { setSubmitSuccess(false); setIsModalOpen(false); fetchComplaints(); }, 2000);
     } catch (err: any) {
@@ -424,6 +461,57 @@ export default function ComplaintsPage() {
                     className="w-full px-4 py-3 rounded-lg border border-border-light outline-none focus:ring-2 focus:ring-brand-primary resize-none"
                     required
                   />
+                </div>
+
+                {/* Media Upload */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Evidence Photo / Video <span className="font-normal normal-case text-text-secondary">(optional)</span></label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,video/*"
+                    className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }}
+                  />
+                  {!mediaPreview ? (
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                      onDragLeave={() => setIsDragging(false)}
+                      onDrop={handleDrop}
+                      className={`flex flex-col items-center justify-center gap-2 w-full border-2 border-dashed rounded-xl py-8 cursor-pointer transition-colors ${
+                        isDragging
+                          ? "border-brand-primary bg-brand-primary/5"
+                          : "border-border-light hover:border-brand-primary hover:bg-brand-primary/5"
+                      }`}
+                    >
+                      <UploadCloud className={`w-8 h-8 ${isDragging ? "text-brand-primary" : "text-text-secondary"}`} />
+                      <p className="text-sm font-medium text-text-secondary">
+                        {isDragging ? "Drop to upload" : "Click or drag & drop"}
+                      </p>
+                      <p className="text-xs text-text-secondary">Supports JPG, PNG, MP4, MOV — max 10 MB</p>
+                    </div>
+                  ) : (
+                    <div className="relative rounded-xl overflow-hidden border border-border-light">
+                      {mediaType === "image" ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={mediaPreview} alt="Preview" className="w-full max-h-48 object-cover" />
+                      ) : (
+                        <video src={mediaPreview} controls className="w-full max-h-48 object-cover" />
+                      )}
+                      <button
+                        type="button"
+                        onClick={clearMedia}
+                        className="absolute top-2 right-2 bg-neutral-dark/70 text-white rounded-full p-1 hover:bg-neutral-dark transition-colors"
+                        title="Remove media"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                      <div className="px-3 py-1.5 bg-neutral-surface border-t border-border-light text-xs text-text-secondary truncate">
+                        {mediaFile?.name}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* GPS button */}

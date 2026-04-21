@@ -5,6 +5,7 @@ import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import LogoutConfirmModal from "@/components/LogoutConfirmModal";
 import {
   getDetectionHistory,
   StoredDetection,
@@ -70,6 +71,7 @@ export default function UserDashboardPage() {
   const [history, setHistory]   = useState<StoredDetection[]>([]);
   const [stats, setStats]       = useState<DashboardStats | null>(null);
   const [loaded, setLoaded]     = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
     // Auth check
@@ -112,11 +114,25 @@ export default function UserDashboardPage() {
     return () => observer.disconnect();
   }, [router]);
 
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/login');
+  };
+
+  const triggerLogout = () => {
+    setShowLogoutConfirm(true);
+  };
+
   const s = stats;
 
   return (
     <>
       <AppHeader dashboardMode={true} />
+      <LogoutConfirmModal 
+        isOpen={showLogoutConfirm} 
+        onClose={() => setShowLogoutConfirm(false)} 
+        onConfirm={handleLogout} 
+      />
       <main className="flex-grow pt-16">
         <div className="flex min-h-screen bg-neutral-surface">
 
@@ -144,15 +160,26 @@ export default function UserDashboardPage() {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                 Traffic Violations
               </Link>
+              <Link href="/Municipal/chat" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                Chats
+              </Link>
+              <Link href="/Municipal/insights" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                Insights
+              </Link>
             </nav>
             <div className="p-4 border-t border-white/10">
-              <div className="flex items-center gap-3 px-4 py-3 text-white opacity-70">
-                <div className="w-8 h-8 rounded-full bg-brand-primary" />
-                <div className="min-w-0">
-                  <div className="text-xs font-bold truncate">Municipal User</div>
-                  <div className="text-[10px] opacity-60 truncate">SadakSathi.ai</div>
+              <button 
+                onClick={triggerLogout}
+                className="w-full flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all"
+              >
+                <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center text-text-primary font-bold">M</div>
+                <div className="min-w-0 text-left">
+                  <div className="text-xs font-bold truncate">Sign Out</div>
+                  <div className="text-[10px] opacity-60 truncate">Municipal Desk</div>
                 </div>
-              </div>
+              </button>
             </div>
           </aside>
 
