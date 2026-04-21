@@ -19,8 +19,8 @@ Pillow>=10.2.0
 numpy>=1.26.0
 
 # --- ML / YOLO ---
-# Use PyTorch CPU-only wheels via find-links (avoids downloading 2.5GB CUDA build)
--f https://download.pytorch.org/whl/torch_stable.html
+# CPU-only PyTorch wheels from the official PyTorch index (avoids 2.5GB CUDA build)
+--extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.2.2+cpu
 torchvision==0.17.2+cpu
 
