@@ -69,7 +69,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ message: 'Invalid email or password' }, { status: 401 });
         }
 
-        const token = await signToken({ userId: user.id, role: user.role });
+        const token = await signToken({ id: user.id, role: user.role });
 
         const response = NextResponse.json({ message: 'Login successful' }, { status: 200 });
         response.cookies.set('auth_token', token, {

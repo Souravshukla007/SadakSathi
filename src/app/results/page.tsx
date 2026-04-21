@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
 import Link from "next/link";
@@ -69,7 +69,7 @@ function downloadJSON(data: unknown, filename: string) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function ResultsPage() {
+function ResultsPageInner() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const [stored, setStored] = useState<StoredDetection | null>(null);
@@ -524,5 +524,13 @@ export default function ResultsPage() {
       </main>
       <AppFooter />
     </>
+  );
+}
+
+export default function ResultsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ResultsPageInner />
+    </Suspense>
   );
 }

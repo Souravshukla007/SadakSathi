@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef, DragEvent } from "react";
+import React, { Suspense, useState, useEffect, useCallback, useRef, DragEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MapPin, Loader2, Search, ChevronDown, ThumbsUp, X, AlertCircle, CheckCircle, UploadCloud, Zap } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
@@ -54,7 +54,7 @@ function statusLabel(status: string) {
 
 const ISSUE_TYPES = [
   "Pothole", "Garbage Accumulation", "Open Manhole", "Fallen Tree",
-  "Broken Street Light", "Broken Sign", "Waterlogging", "Other"
+  "Signal Jumping", "Triple Riding", "No Helmet", "Wrong Side Driving"
 ];
 
 const FILTER_OPTIONS = [
@@ -73,7 +73,7 @@ const SORT_OPTIONS = [
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-export default function ComplaintsPage() {
+function ComplaintsPageInner() {
   const router       = useRouter();
   const searchParams = useSearchParams();
 
@@ -626,5 +626,13 @@ export default function ComplaintsPage() {
         </div>
       )}
     </>
+  );
+}
+
+export default function ComplaintsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ComplaintsPageInner />
+    </Suspense>
   );
 }

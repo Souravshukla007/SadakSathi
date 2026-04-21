@@ -26,7 +26,6 @@ export default function AppFooter() {
                     <div>
                         <h4 className="font-heading font-bold mb-6 text-sm uppercase tracking-widest text-text-primary" data-pixel-id="vkfng" data-pixel-kind="text">Platform</h4>
                         <ul className="space-y-3 text-sm text-text-secondary">
-                            <li data-pixel-id="dotke" data-pixel-kind="text"><Link href="/traffic-violations" className="hover:text-brand-primary transition-colors" data-pixel-id="gmw8q" data-pixel-kind="link">Traffic AI</Link></li>
                             <li data-pixel-id="f65jq" data-pixel-kind="text"><Link href="/upload" className="hover:text-brand-primary transition-colors" data-pixel-id="c1yux" data-pixel-kind="link">Upload Portal</Link></li>
                             <li data-pixel-id="9y43p" data-pixel-kind="text"><Link href="/performance" className="hover:text-brand-primary transition-colors" data-pixel-id="zjfpi" data-pixel-kind="link">Model Analytics</Link></li>
                             <li data-pixel-id="jekyg" data-pixel-kind="text"><Link href="/admin" className="hover:text-brand-primary transition-colors" data-pixel-id="5ogx0" data-pixel-kind="link">Municipal Dashboard</Link></li>

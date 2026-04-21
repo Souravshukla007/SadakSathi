@@ -21,7 +21,6 @@ const AUTH_REQUIRED_PATHS = [
     "/complaints",
     "/leaderboard",
     "/performance",
-    "/traffic-violations",
     "/results",
 ];
 
@@ -102,7 +101,6 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
                 {/* Desktop nav — flex-1 centered, never overlaps right side */}
                 <div className="hidden md:flex flex-1 items-center justify-center gap-0.5 min-w-0">
                     <Link href="/" className={navLinkClass}>Home</Link>
-                    <Link href="/traffic-violations" className={navLinkClass}>Traffic AI</Link>
                     <Link href="/upload"             className={navLinkClass}>AI Detector</Link>
                     {!isLoading && isLoggedIn && !isAuthorityDashboard && (
                         <>
@@ -151,7 +149,6 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
             <div className={`md:hidden absolute top-full left-0 w-full bg-white border-t border-border-light transition-all duration-300 ${mobileMenuOpen ? 'mobile-menu-visible' : 'mobile-menu-hidden'}`}>
                 <div className="flex flex-col px-6 py-4 gap-1">
                     <Link href="/" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Home</Link>
-                    <Link href="/traffic-violations" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Traffic AI</Link>
                     <Link href="/upload"             className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>AI Detector</Link>
                     {!isLoading && isLoggedIn && !isAuthorityDashboard && (
                         <>

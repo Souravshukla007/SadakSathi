@@ -15,7 +15,6 @@ const PROTECTED_ROUTES = [
     '/complaints',
     '/leaderboard',
     '/performance',
-    '/traffic-violations',
     '/governance',
     '/resources',
     '/admin',

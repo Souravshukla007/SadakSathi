@@ -163,16 +163,17 @@ export default function UserDashboardPage() {
     const fetchMyComplaints = useCallback(async () => {
         setMyLoading(true);
         try {
-            const res = await fetch('/api/complaints/my');
+            const res = await fetch('/api/complaints/my', { credentials: 'include' });
             if (res.ok) setMyComplaints(await res.json());
         } finally {
             setMyLoading(false);
         }
     }, []);
 
+    // Only fetch after auth is confirmed (user is set)
     useEffect(() => {
-        fetchMyComplaints();
-    }, [fetchMyComplaints]);
+        if (user) fetchMyComplaints();
+    }, [user, fetchMyComplaints]);
 
     // ── Fetch public feed ───────────────────────────────────────────────────
     const fetchFeed = useCallback(async () => {
