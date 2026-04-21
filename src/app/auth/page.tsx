@@ -25,6 +25,7 @@ function AuthForm() {
     const [role, setRole] = useState("Citizen Contributor");
     const [authorityType, setAuthorityType] = useState<"citizen" | "municipal" | "traffic">("citizen");
     const [isLoading, setIsLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
 
     useEffect(() => {
         // Small delay to allow initial animation on mount
@@ -51,8 +52,7 @@ function AuthForm() {
             
             if (res.ok) {
                 toast.success(data.message || "Login successful!");
-                // Role-based redirect takes priority; then the ?redirect= param
-                if (data.redirectUrl && (data.redirectUrl === '/Municipal' || data.redirectUrl.startsWith('/admin'))) {
+                if (data.redirectUrl) {
                     window.location.href = data.redirectUrl;
                 } else {
                     window.location.href = redirectTo;
@@ -184,7 +184,12 @@ function AuthForm() {
                                                     <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Password</label>
                                                     <a href="#" className="text-xs text-brand-primary font-bold hover:underline">Forgot?</a>
                                                 </div>
-                                                <input type="password" placeholder="••••••••" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none transition-all" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                                                <div className="relative">
+                                                    <input type={showPassword ? "text" : "password"} placeholder="••••••••" className="w-full px-4 py-3 pr-12 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none transition-all" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary">
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">{showPassword ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /> : <><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></>}</svg>
+                                                    </button>
+                                                </div>
                                             </div>
                                         </>
                                     ) : (
@@ -202,14 +207,19 @@ function AuthForm() {
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Password</label>
-                                                <input 
-                                                    type="password" 
-                                                    placeholder={authorityType === "municipal" ? "municipal123" : "traffic123"} 
-                                                    className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none transition-all" 
-                                                    value={password} 
-                                                    onChange={(e) => setPassword(e.target.value)} 
-                                                    required 
-                                                />
+                                                <div className="relative">
+                                                    <input 
+                                                        type={showPassword ? "text" : "password"} 
+                                                        placeholder={authorityType === "municipal" ? "municipal123" : "traffic123"} 
+                                                        className="w-full px-4 py-3 pr-12 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none transition-all" 
+                                                        value={password} 
+                                                        onChange={(e) => setPassword(e.target.value)} 
+                                                        required 
+                                                    />
+                                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary">
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">{showPassword ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /> : <><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></>}</svg>
+                                                    </button>
+                                                </div>
                                             </div>
                                             <div className="text-xs text-text-secondary bg-gray-50 p-3 rounded-lg">
                                                 <strong>Hard-coded credentials:</strong><br />
@@ -256,7 +266,12 @@ function AuthForm() {
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-xs font-bold uppercase text-text-secondary tracking-wider">Password</label>
-                                        <input type="password" placeholder="••••••••" className="w-full px-4 py-3 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                                        <div className="relative">
+                                            <input type={showPassword ? "text" : "password"} placeholder="••••••••" className="w-full px-4 py-3 pr-12 rounded-lg border border-border-light bg-white focus:ring-2 focus:ring-brand-primary outline-none" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                                            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary">
+                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">{showPassword ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /> : <><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></>}</svg>
+                                            </button>
+                                        </div>
                                     </div>
                                     <button type="submit" disabled={isLoading} className="w-full py-4 bg-brand-primary text-text-primary font-bold rounded-lg hover:shadow-soft transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed">
                                         {isLoading ? "Creating Account..." : "Create Account"}

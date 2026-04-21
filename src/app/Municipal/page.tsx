@@ -80,7 +80,7 @@ export default function UserDashboardPage() {
         const res = await fetch("/api/auth/me", { cache: "no-store" });
         if (!res.ok) { router.push("/auth"); return; }
         const data = await res.json();
-        if (data.role !== "municipal" && data.role !== "user") {
+        if (data.user?.role !== "municipal" && data.user?.role !== "user") {
           router.push("/auth");
         }
       } catch {

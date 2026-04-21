@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import DownloadAppButton from "@/components/app-download/DownloadAppButton";
 import DownloadAppModal from "@/components/app-download/DownloadAppModal";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import LogoutConfirmModal from "@/components/LogoutConfirmModal";
 
 interface AppHeaderProps {
     dashboardMode?: boolean;
@@ -29,6 +30,7 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
     const [showDownloadModal, setShowDownloadModal] = useState(false);
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
     const router = useRouter();
 
     useEffect(() => {
@@ -49,11 +51,16 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
         try {
             await fetch('/api/auth/logout', { method: 'POST' });
             setIsLoggedIn(false);
+            setShowLogoutConfirm(false);
             router.push('/');
             router.refresh();
         } catch (error) {
             console.error('Logout failed', error);
         }
+    };
+
+    const triggerLogout = () => {
+        setShowLogoutConfirm(true);
     };
 
     /**
@@ -109,7 +116,7 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
                     <DownloadAppButton onClick={() => setShowDownloadModal(true)} compact />
                     {!isLoading && isLoggedIn ? (
                         <>
-                            <button onClick={handleLogout} className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap">Logout</button>
+                            <button onClick={triggerLogout} className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap">Logout</button>
                             <Link href="/my-account" className="px-4 py-2 bg-text-primary text-white font-medium text-sm rounded-lg hover:shadow-soft transition-all hover:-translate-y-0.5 whitespace-nowrap">
                                 My Account
                             </Link>
@@ -156,7 +163,7 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
                     {!isLoading && isLoggedIn ? (
                         <>
                             <Link href="/my-account" className="py-3 text-sm font-medium text-text-primary border-b border-border-light" onClick={() => setMobileMenuOpen(false)}>My Account</Link>
-                            <button onClick={() => { setMobileMenuOpen(false); handleLogout(); }} className="py-3 text-sm font-medium text-red-500 text-left">Logout</button>
+                            <button onClick={() => { setMobileMenuOpen(false); triggerLogout(); }} className="py-3 text-sm font-medium text-red-500 text-left">Logout</button>
                         </>
                     ) : !isLoading && (
                         <Link href="/auth" className="py-3 text-sm font-medium text-brand-primary" onClick={() => setMobileMenuOpen(false)}>
@@ -168,6 +175,11 @@ export default function AppHeader({ dashboardMode = false }: AppHeaderProps) {
         </header>
 
         <DownloadAppModal open={showDownloadModal} onClose={() => setShowDownloadModal(false)} />
+        <LogoutConfirmModal 
+            isOpen={showLogoutConfirm} 
+            onClose={() => setShowLogoutConfirm(false)} 
+            onConfirm={handleLogout} 
+        />
         </>
     );
 }
