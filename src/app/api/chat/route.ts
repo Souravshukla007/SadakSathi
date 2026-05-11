@@ -25,7 +25,8 @@ export async function GET(req: NextRequest) {
         const url = new URL(req.url);
         const department = url.searchParams.get('department'); // 'municipal' or 'traffic'
         const threadId = url.searchParams.get('threadId');
-        
+        const complaintId = url.searchParams.get('complaintId');
+
         // If threadId is provided, just return the messages for that thread
         if (threadId) {
             const thread = await prisma.chatThread.findUnique({
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
                 include: { messages: { orderBy: { createdAt: 'asc' } } }
             });
             if (!thread) return NextResponse.json({ message: 'Thread not found' }, { status: 404 });
-            
+
             // Security check
             if (user.role !== 'municipal' && user.role !== 'traffic' && thread.userId !== user.id) {
                 return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
@@ -41,10 +42,48 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ messages: thread.messages });
         }
 
+        // --- CITIZEN: complaint-specific thread ---
+        if (complaintId && user.role !== 'municipal' && user.role !== 'traffic') {
+            // Verify the citizen owns this complaint
+            const complaint = await prisma.complaint.findUnique({
+                where: { id: complaintId },
+                select: { id: true, userId: true, issueType: true }
+            });
+            if (!complaint) {
+                return NextResponse.json({ message: 'Complaint not found' }, { status: 404 });
+            }
+            if (complaint.userId !== (user.id as string)) {
+                return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
+            }
+
+            // Find or create a thread scoped to this complaint
+            let thread = await prisma.chatThread.findFirst({
+                where: { userId: user.id as string, complaintId },
+                include: { messages: { orderBy: { createdAt: 'asc' } } }
+            });
+
+            if (!thread) {
+                thread = await prisma.chatThread.create({
+                    data: {
+                        userId: user.id as string,
+                        department: 'municipal',
+                        complaintId
+                    },
+                    include: { messages: true }
+                });
+            }
+
+            return NextResponse.json({
+                threadId: thread.id,
+                messages: thread.messages,
+                complaint: { id: complaint.id, issueType: complaint.issueType }
+            });
+        }
+
         // Return threads based on role
         if (user.role !== 'municipal' && user.role !== 'traffic') {
             if (!department) return NextResponse.json({ message: 'Department required' }, { status: 400 });
-            
+
             // For a citizen, they only have 1 main thread per department (general chat).
             let thread = await prisma.chatThread.findFirst({
                 where: { userId: user.id as string, department, complaintId: null },
@@ -73,9 +112,8 @@ export async function GET(req: NextRequest) {
                 },
                 orderBy: { updatedAt: 'desc' }
             });
-            
-            // Fetch user info for each thread manually since we don't have relation defined in prisma for userId -> User
-            // Wait, we do have user model. But ChatThread userId is just a string, no relation.
+
+            // Fetch user info for each thread
             const userIds = [...new Set(threads.map(t => t.userId))];
             const users = await prisma.user.findMany({
                 where: { id: { in: userIds } },
@@ -83,9 +121,23 @@ export async function GET(req: NextRequest) {
             });
             const userMap = new Map(users.map(u => [u.id, u]));
 
+            // Fetch complaint info for threads that have a complaintId
+            const complaintIds = threads
+                .map(t => t.complaintId)
+                .filter((id): id is string => id !== null);
+
+            const complaints = complaintIds.length > 0
+                ? await prisma.complaint.findMany({
+                    where: { id: { in: complaintIds } },
+                    select: { id: true, issueType: true }
+                })
+                : [];
+            const complaintMap = new Map(complaints.map(c => [c.id, c]));
+
             const enrichedThreads = threads.map(t => ({
                 ...t,
-                user: userMap.get(t.userId) || { fullName: 'Unknown User' }
+                user: userMap.get(t.userId) || { fullName: 'Unknown User', email: '' },
+                complaint: t.complaintId ? (complaintMap.get(t.complaintId) ?? null) : null
             }));
 
             return NextResponse.json({ threads: enrichedThreads });
