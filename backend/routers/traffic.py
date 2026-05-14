@@ -1,9 +1,14 @@
 """
-SadakSathi — Traffic Violation Detection Router
+SadakSathi — Traffic Violation Detection Router (best_traffic.pt)
 
 Endpoints:
-    POST /detect/traffic/image  — Upload image → detect violations (helmet, triple riding, etc.)
+    POST /detect/traffic/image  — Upload image → detect violations (helmet, triple riding, number plate, etc.)
     POST /detect/traffic/video  — Upload video → ByteTrack/BoT-SORT tracking → unique violations
+
+Model: best_traffic.pt
+  Improved: number plate bounding boxes are now accurate with proper OCR support.
+  Detects: helmet, no_helmet, number_plate, number_plate_missing, triple_riding,
+           wrong_side_moving, vehicle, motorcycle, car, bike, truck, bus
 """
 
 from __future__ import annotations
@@ -37,16 +42,17 @@ MAX_VIDEO_SIZE = 200 * 1024 * 1024  # 200 MB (tracking needs full video)
 async def detect_traffic_image(
     request: Request,
     file: UploadFile = File(..., description="Image file (JPG, PNG, WEBP)"),
-    conf_threshold: float = Form(0.25, ge=0.0, le=1.0, description="Confidence threshold"),
+    conf_threshold: float = Form(0.25, ge=0.0, le=1.0, description="Confidence threshold. Default 0.25 tuned for best_traffic.pt."),
     include_annotated: bool = Form(True, description="Return base64 annotated image"),
-    run_ocr: bool = Form(True, description="Run EasyOCR on detected number plates"),
+    run_ocr: bool = Form(True, description="Run EasyOCR on detected number plates (uses best_traffic.pt's improved plate boxes)"),
 ):
     """
-    Detect traffic violations in a single image.
+    Detect traffic violations in a single image using best_traffic.pt.
 
     Detects:
       • **Helmet / No Helmet** — rider compliance
-      • **Number Plate** — with optional OCR text extraction
+      • **Number Plate** — with OCR text extraction (improved accuracy in new model)
+      • **Number Plate Missing** — vehicle without plate
       • **Triple Riding** — three or more persons on a two-wheeler
       • **Wrong Side Moving** — vehicle travelling against traffic
 
@@ -148,7 +154,7 @@ async def detect_traffic_image(
 async def detect_traffic_video(
     request: Request,
     file: UploadFile = File(..., description="Video file (MP4, AVI, MOV)"),
-    conf_threshold: float = Form(0.25, ge=0.0, le=1.0, description="Confidence threshold"),
+    conf_threshold: float = Form(0.25, ge=0.0, le=1.0, description="Confidence threshold. Default 0.25 tuned for best_traffic.pt."),
     tracker: str = Form(
         "bytetrack.yaml",
         description='Tracker config: "bytetrack.yaml" or "botsort.yaml"',

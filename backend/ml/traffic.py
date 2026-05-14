@@ -59,6 +59,10 @@ CLASS_CONFIG: dict[str, dict] = {
     "bike":                {"display": "Bike",                     "priority": "Low"},
     "truck":               {"display": "Truck",                    "priority": "Low"},
     "bus":                 {"display": "Bus",                      "priority": "Low"},
+    # Additional classes that may appear in best_traffic.pt
+    "auto":                {"display": "Auto Rickshaw",            "priority": "Low"},
+    "auto_rickshaw":       {"display": "Auto Rickshaw",            "priority": "Low"},
+    "person":              {"display": "Person",                   "priority": "Low"},
 }
 
 PRIORITY_COLORS: dict[str, tuple[int, int, int]] = {

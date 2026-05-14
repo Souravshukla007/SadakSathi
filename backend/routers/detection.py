@@ -1,9 +1,13 @@
 """
-SadakSathi — Detection API Router
+SadakSathi — Detection API Router (best_municipal.pt)
 
 Endpoints:
     POST /detect/image  — Upload an image for multi-class hazard detection
     POST /detect/video  — Upload a video for frame-by-frame hazard detection
+
+Model: best_municipal.pt
+  Improved detection for: pothole, garbage, overflow_garbage, manhole_cover,
+  broken_sign, broken_street_light, fallen_tree
 """
 
 from __future__ import annotations
@@ -33,14 +37,16 @@ MAX_VIDEO_SIZE = 100 * 1024 * 1024  # 100 MB
 async def detect_image(
     request: Request,
     file: UploadFile = File(..., description="Image file (JPG, PNG, WEBP)"),
-    conf_threshold: float = Form(0.13, description="Confidence threshold (0.0 - 1.0)"),
+    conf_threshold: float = Form(0.20, description="Confidence threshold (0.0 - 1.0). Default 0.20 matches best_municipal.pt optimal sensitivity."),
     include_annotated: bool = Form(True, description="Include base64-encoded annotated image"),
 ):
     """
-    Upload an image for multi-class hazard detection.
+    Upload an image for multi-class hazard detection (best_municipal.pt).
 
-    Detects: pothole, manhole_cover, garbage, overflow_garbage, fallen_tree, etc.
-    Returns bounding boxes, confidence scores, depth scores, per-detection priority, 
+    Detects: pothole, manhole_cover, garbage, overflow_garbage, fallen_tree,
+    broken_sign, broken_street_light.
+
+    Returns bounding boxes, confidence scores, depth scores, per-detection priority,
     overall road priority, and optionally an annotated image (base64).
     """
     model = getattr(request.app.state, "model", None)
@@ -108,7 +114,7 @@ async def detect_image(
 async def detect_video(
     request: Request,
     file: UploadFile = File(..., description="Video file (MP4, AVI, MOV)"),
-    conf_threshold: float = Form(0.25, description="Confidence threshold"),
+    conf_threshold: float = Form(0.20, description="Confidence threshold. Default 0.20 matches best_municipal.pt."),
     sample_rate: int = Form(5, description="Process every Nth frame (default: 5)"),
 ):
     """

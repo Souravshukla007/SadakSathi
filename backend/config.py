@@ -28,20 +28,23 @@ class Settings(BaseSettings):
     # --- Road Hazard Model ---
     # Detects: pothole, garbage, overflow_garbage, manhole_cover,
     #          broken_sign, broken_street_light, fallen_tree
-    MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "best_whole_model_nano.pt")
-    CONF_THRESHOLD: float = 0.13  # Default confidence threshold
+    # Updated to best_municipal.pt — higher accuracy, improved garbage detection
+    MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "best_municipal.pt")
+    CONF_THRESHOLD: float = 0.20  # Raised slightly — new model is more precise
     DEVICE: str = "auto"           # "auto" | "cpu" | "cuda"
 
     # --- Traffic Violation Model ---
     # Detects: helmet, no_helmet, number_plate, triple_riding, wrong_side_moving
-    TRAFFIC_MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "traffic_model_nano_worse.pt")
+    # Updated to best_traffic.pt — improved accuracy, proper number plate detection
+    TRAFFIC_MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "best_traffic.pt")
 
     # --- Object Tracking (Traffic Video) ---
     # "bytetrack.yaml" or "botsort.yaml" — Ultralytics built-in trackers
     TRACKER: str = "bytetrack.yaml"
 
     # --- OCR (Number Plate Reading) ---
-    OCR_ENABLED: bool = False   # Disabled: easyocr excluded from Render build (python-bidi Rust issue)
+    # Enabled: best_traffic.pt has dedicated number_plate class with proper bounding boxes
+    OCR_ENABLED: bool = True
     OCR_LANGUAGES: list[str] = ["en"]  # EasyOCR language codes
 
     # --- Duplication Detection ---
@@ -70,7 +73,8 @@ UPLOAD_PATH = BASE_DIR / get_settings().UPLOAD_DIR
 #  Supported Class Labels (for documentation & validation)
 # ─────────────────────────────────────────────
 
-# Road hazard model classes
+# Road hazard model classes — best_municipal.pt
+# Improved: garbage and overflow_garbage detection significantly better in new model
 ROAD_HAZARD_CLASSES: list[str] = [
     "pothole",
     "garbage",
@@ -81,7 +85,8 @@ ROAD_HAZARD_CLASSES: list[str] = [
     "fallen_tree",
 ]
 
-# Traffic violation model classes
+# Traffic violation model classes — best_traffic.pt
+# Improved: number_plate bounding boxes are accurate + OCR-ready in new model
 TRAFFIC_VIOLATION_CLASSES: list[str] = [
     "helmet",
     "no_helmet",
@@ -93,6 +98,8 @@ TRAFFIC_VIOLATION_CLASSES: list[str] = [
     "motorcycle",
     "car",
     "bike",
+    "truck",
+    "bus",
 ]
 
 ALL_DETECTION_CLASSES: list[str] = ROAD_HAZARD_CLASSES + TRAFFIC_VIOLATION_CLASSES

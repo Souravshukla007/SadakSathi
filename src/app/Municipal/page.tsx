@@ -12,59 +12,6 @@ import {
   relativeTime,
 } from "@/lib/mlApi";
 
-// ── Derived stats from sessionStorage history ─────────────────────────────────
-
-interface DashboardStats {
-  totalUploads: number;
-  potholesDetected: number;
-  highSeverity: number;
-  barData: number[];            // last 7 runs — total_detections each
-  highPct: number;
-  mediumPct: number;
-  lowPct: number;
-}
-
-function computeStats(history: StoredDetection[]): DashboardStats {
-  // Only count road-engine detections for municipal dashboard
-  const roadHistory = history.filter(e => e.engine === "road");
-  let potholesDetected = 0;
-  let highSeverity = 0;
-  let mediumCount  = 0;
-  let lowCount     = 0;
-
-  for (const entry of roadHistory) {
-    const r = entry.result as any;
-    const pc = r.priority_counts ?? r.summary?.priority_counts ?? {};
-    const cc = r.class_counts   ?? r.summary?.class_counts   ?? {};
-
-    highSeverity   += pc["High"]   ?? 0;
-    mediumCount    += pc["Medium"] ?? 0;
-    lowCount       += pc["Low"]    ?? 0;
-    potholesDetected += cc["pothole"] ?? 0;
-  }
-
-  const total = highSeverity + mediumCount + lowCount;
-
-  // Last 7 road runs → detection count for bar chart
-  const last7 = roadHistory.slice(0, 7).reverse();
-  const barData = last7.map((e) => (e.result as any).total_detections ?? 0);
-  while (barData.length < 7) barData.unshift(0);
-
-  const maxBar = Math.max(...barData, 1);
-
-  return {
-    totalUploads:    roadHistory.length,
-    potholesDetected,
-    highSeverity,
-    barData:         barData.map((v) => Math.round((v / maxBar) * 100)),
-    highPct:         total > 0 ? Math.round((highSeverity / total) * 100) : 0,
-    mediumPct:       total > 0 ? Math.round((mediumCount  / total) * 100) : 0,
-    lowPct:          total > 0 ? Math.round((lowCount     / total) * 100) : 0,
-  };
-}
-
-const DAY_LABELS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-
 // ── Complaint type from API ────────────────────────────────────────────────────
 interface Complaint {
   id: string;
@@ -78,6 +25,84 @@ interface Complaint {
   createdAt: string;
   upvoteCount: number;
   submittedBy: string;
+}
+
+// ── Derived stats from complaints ─────────────────────────────────────────────
+
+interface DashboardStats {
+  totalComplaints: number;
+  potholeComplaints: number;
+  pendingAction: number;
+  resolutionRate: string;
+  barData: number[]; // last 7 days counts
+  pendingPct: number;
+  inProgressPct: number;
+  resolvedPct: number;
+}
+
+const getLast7DaysLabels = () => {
+  const labels = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    labels.push(d.toLocaleDateString("en-IN", { weekday: 'short' }).toUpperCase());
+  }
+  return labels;
+};
+
+function computeComplaintStats(complaints: Complaint[]): DashboardStats {
+  const totalComplaints = complaints.length;
+  let potholeComplaints = 0;
+  let pendingAction = 0;
+  let inProgress = 0;
+  let resolved = 0;
+
+  // For the bar chart: last 7 days counts
+  const last7DaysCounts = [0, 0, 0, 0, 0, 0, 0];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  for (const c of complaints) {
+    if (c.issueType.toLowerCase().includes("pothole")) {
+      potholeComplaints++;
+    }
+
+    if (c.status === "Submitted" || c.status === "OnHold") {
+      pendingAction++;
+    } else if (c.status === "Approved") {
+      inProgress++;
+    } else if (c.status === "Completed" || c.status === "ResolvedReviewed") {
+      resolved++;
+    }
+
+    // Bar chart date grouping
+    const cDate = new Date(c.createdAt);
+    cDate.setHours(0, 0, 0, 0);
+    const diffTime = today.getTime() - cDate.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays >= 0 && diffDays < 7) {
+      // Index 6 is today, 5 is yesterday, etc.
+      last7DaysCounts[6 - diffDays]++;
+    }
+  }
+
+  const maxBar = Math.max(...last7DaysCounts, 1);
+  const barData = last7DaysCounts.map(v => Math.round((v / maxBar) * 100));
+
+  const totalStatus = pendingAction + inProgress + resolved;
+  const resolutionRate = totalStatus > 0 ? ((resolved / totalStatus) * 100).toFixed(1) + "%" : "0%";
+
+  return {
+    totalComplaints,
+    potholeComplaints,
+    pendingAction,
+    resolutionRate,
+    barData,
+    pendingPct: totalStatus > 0 ? Math.round((pendingAction / totalStatus) * 100) : 0,
+    inProgressPct: totalStatus > 0 ? Math.round((inProgress / totalStatus) * 100) : 0,
+    resolvedPct: totalStatus > 0 ? Math.round((resolved / totalStatus) * 100) : 0,
+  };
 }
 
 function statusStyle(status: string) {
@@ -123,8 +148,6 @@ export default function UserDashboardPage() {
     // Load road-engine detection history from sessionStorage
     const h = getDetectionHistory();
     setHistory(h);
-    setStats(computeStats(h));
-    setLoaded(true);
 
     // Fetch submitted complaints from DB
     const fetchComplaints = async () => {
@@ -133,9 +156,11 @@ export default function UserDashboardPage() {
         if (res.ok) {
           const data = await res.json();
           setComplaints(data);
+          setStats(computeComplaintStats(data));
         }
       } catch { /* noop */ } finally {
         setComplaintsLoading(false);
+        setLoaded(true);
       }
     };
     fetchComplaints();
@@ -260,24 +285,24 @@ export default function UserDashboardPage() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
                   <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">Total Analyses</div>
-                    <div className="text-3xl font-bold mb-1">{s?.totalUploads ?? 0}</div>
-                    <div className="text-xs text-text-secondary">This browser session</div>
+                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">Total Complaints</div>
+                    <div className="text-3xl font-bold mb-1">{s?.totalComplaints ?? 0}</div>
+                    <div className="text-xs text-text-secondary">From all citizens</div>
                   </div>
                   <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">Potholes Detected</div>
-                    <div className="text-3xl font-bold mb-1">{s?.potholesDetected ?? 0}</div>
-                    <div className="text-xs text-text-secondary">Road hazard engine</div>
+                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">Potholes Reported</div>
+                    <div className="text-3xl font-bold mb-1">{s?.potholeComplaints ?? 0}</div>
+                    <div className="text-xs text-text-secondary">Major hazard type</div>
                   </div>
                   <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">High Severity</div>
-                    <div className="text-3xl font-bold mb-1 text-red-500">{s?.highSeverity ?? 0}</div>
-                    <div className="text-xs text-text-secondary">Requires immediate action</div>
+                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">Pending Action</div>
+                    <div className="text-3xl font-bold mb-1 text-red-500">{s?.pendingAction ?? 0}</div>
+                    <div className="text-xs text-text-secondary">Requires review/action</div>
                   </div>
                   <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">AI Accuracy</div>
-                    <div className="text-3xl font-bold mb-1">94.2%</div>
-                    <div className="text-xs text-brand-primary font-bold">Industry Leading</div>
+                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">Resolution Rate</div>
+                    <div className="text-3xl font-bold mb-1">{s?.resolutionRate ?? "0%"}</div>
+                    <div className="text-xs text-brand-primary font-bold">Total resolved</div>
                   </div>
                 </div>
               )}
@@ -285,11 +310,11 @@ export default function UserDashboardPage() {
               {/* Charts */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
 
-                {/* Bar Chart — last 7 runs */}
+                {/* Bar Chart — last 7 days */}
                 <div className="lg:col-span-2 bg-white p-8 rounded-2xl shadow-soft border border-border-light">
-                  <h3 className="font-heading font-bold mb-2">Detection Count — Last {Math.min(history.length, 7)} Runs</h3>
-                  {history.length === 0 && (
-                    <p className="text-sm text-text-secondary mb-6">No analyses yet. <Link href="/upload" className="text-brand-primary font-bold hover:underline">Run your first detection →</Link></p>
+                  <h3 className="font-heading font-bold mb-2">Complaints Over Time — Last 7 Days</h3>
+                  {(!s || s.totalComplaints === 0) && (
+                    <p className="text-sm text-text-secondary mb-6">No complaints submitted yet. <Link href="/complaints" className="text-brand-primary font-bold hover:underline">View community feed →</Link></p>
                   )}
                   <div className="h-64 flex items-end justify-between gap-2 mt-4">
                     {(s?.barData ?? Array(7).fill(0)).map((pct, i) => (
@@ -305,36 +330,41 @@ export default function UserDashboardPage() {
                     ))}
                   </div>
                   <div className="flex justify-between mt-4 text-[10px] font-mono text-text-secondary">
-                    {DAY_LABELS.map((d) => <span key={d}>{d}</span>)}
+                    {getLast7DaysLabels().map((d, i) => <span key={i}>{d}</span>)}
                   </div>
                 </div>
 
-                {/* Severity Ring */}
+                {/* Status Ring */}
                 <div className="bg-white p-8 rounded-2xl shadow-soft border border-border-light">
-                  <h3 className="font-heading font-bold mb-8">Severity Distribution</h3>
+                  <h3 className="font-heading font-bold mb-8">Complaint Status</h3>
                   <div className="relative aspect-square flex items-center justify-center">
                     <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
                       <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f3f4f6" strokeWidth="3.5" />
-                      {s && s.highPct > 0 && (
+                      {s && s.pendingPct > 0 && (
                         <circle cx="18" cy="18" r="15.9" fill="none" stroke="#ef4444" strokeWidth="3.5"
-                          strokeDasharray={`${s.highPct} ${100 - s.highPct}`} strokeDashoffset="0" strokeLinecap="round" />
+                          strokeDasharray={`${s.pendingPct} ${100 - s.pendingPct}`} strokeDashoffset="0" strokeLinecap="round" />
                       )}
-                      {s && s.mediumPct > 0 && (
+                      {s && s.inProgressPct > 0 && (
                         <circle cx="18" cy="18" r="15.9" fill="none" stroke="#facc15" strokeWidth="3.5"
-                          strokeDasharray={`${s.mediumPct} ${100 - s.mediumPct}`}
-                          strokeDashoffset={`${-(s.highPct)}`} strokeLinecap="round" />
+                          strokeDasharray={`${s.inProgressPct} ${100 - s.inProgressPct}`}
+                          strokeDashoffset={`${-(s.pendingPct)}`} strokeLinecap="round" />
+                      )}
+                      {s && s.resolvedPct > 0 && (
+                        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#4ade80" strokeWidth="3.5"
+                          strokeDasharray={`${s.resolvedPct} ${100 - s.resolvedPct}`}
+                          strokeDashoffset={`${-(s.pendingPct + s.inProgressPct)}`} strokeLinecap="round" />
                       )}
                     </svg>
                     <div className="absolute text-center">
-                      <div className="text-2xl font-bold">{s?.highSeverity ?? 0}</div>
-                      <div className="text-[10px] uppercase font-mono text-text-secondary">High Risk</div>
+                      <div className="text-2xl font-bold">{s?.pendingAction ?? 0}</div>
+                      <div className="text-[10px] uppercase font-mono text-text-secondary">Pending Action</div>
                     </div>
                   </div>
                   <div className="mt-6 space-y-3">
                     {[
-                      { label: "High",   color: "bg-red-500",    pct: s?.highPct   ?? 0 },
-                      { label: "Medium", color: "bg-yellow-400",  pct: s?.mediumPct ?? 0 },
-                      { label: "Low",    color: "bg-green-400",   pct: s?.lowPct    ?? 0 },
+                      { label: "Pending",   color: "bg-red-500",    pct: s?.pendingPct   ?? 0 },
+                      { label: "In Progress", color: "bg-yellow-400",  pct: s?.inProgressPct ?? 0 },
+                      { label: "Resolved",    color: "bg-green-400",   pct: s?.resolvedPct    ?? 0 },
                     ].map(({ label, color, pct }) => (
                       <div key={label} className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-2"><div className={`w-3 h-3 ${color} rounded-full`} />{label}</div>

@@ -39,7 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
+detailed_report.md
+MiniProject2_Report.pdf
+best_municipal.pt
+best_traffic.pt
 /src/generated/prisma
 
 # python
