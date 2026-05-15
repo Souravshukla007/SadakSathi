@@ -4,8 +4,9 @@ import React, { useEffect, useState } from 'react';
 import AppHeader from '@/components/AppHeader';
 import AppFooter from '@/components/AppFooter';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Toaster, toast } from 'react-hot-toast';
+import { Suspense } from 'react';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 
 interface Complaint {
@@ -30,7 +31,17 @@ interface Complaint {
 }
 
 export default function MunicipalComplaintsPage() {
+    return (
+        <Suspense fallback={<div className="h-screen flex items-center justify-center">Loading dashboard...</div>}>
+            <ComplaintsContent />
+        </Suspense>
+    );
+}
+
+function ComplaintsContent() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const highlightId = searchParams.get('highlight');
     const [complaints, setComplaints] = useState<Complaint[]>([]);
     const [loading, setLoading] = useState(true);
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -68,6 +79,15 @@ export default function MunicipalComplaintsPage() {
         };
         fetchComplaints();
     }, [router]);
+
+    useEffect(() => {
+        if (highlightId && complaints.length > 0 && !isModalOpen) {
+            const target = complaints.find(c => c.id === highlightId);
+            if (target) {
+                openModal(target);
+            }
+        }
+    }, [highlightId, complaints]);
 
     const handleLogout = async () => {
         await fetch('/api/auth/logout', { method: 'POST' });
