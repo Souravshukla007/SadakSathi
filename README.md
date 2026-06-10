@@ -1,4 +1,4 @@
-# 🛣️ sadakSathi — AI-Powered Road Intelligence & Traffic Enforcement
+# 🛣️ SadakSathi - AI-Powered Road Intelligence & Traffic Enforcement
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115.0-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Next.js](https://img.shields.io/badge/Next.js-16.1.6-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org)
