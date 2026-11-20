@@ -1,0 +1,20 @@
+# HTTPS front door. Only this container is reachable from the network; it redirects http -> https
+# and proxies to the web app on the private Docker network.
+#   SITE_ADDRESS=sadaksathi.example.com  CADDY_TLS=you@example.com  -> real Let's Encrypt certificate
+#   SITE_ADDRESS=raspberrypi.local       CADDY_TLS=internal          -> Caddy's own local CA (LAN only)
+{$SITE_ADDRESS} {
+	tls {$CADDY_TLS}
+	encode zstd gzip
+	# Detection uploads may be videos: 100 MiB on the ML server, 110 MiB in next.config.ts, so 110 MB here
+	# (Caddy's MB is 10^6) lets a full video plus form overhead through. Everything else is JSON, where a
+	# report's photo and video (~4 MB of base64 each, src/lib/complaintMedia.ts) fit in 10 MB.
+	@detect path /api/ml/detect
+	request_body @detect {
+		max_size 110MB
+	}
+	@other not path /api/ml/detect
+	request_body @other {
+		max_size 10MB
+	}
+	reverse_proxy web:3000
+}

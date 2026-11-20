@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import io
 import logging
-import os
+import threading
 import warnings
 from collections import defaultdict
 
@@ -154,7 +154,8 @@ class CivicIssueDuplicateDetector:
         # ── Text embedding model (Sentence-BERT) ──
         try:
             from sentence_transformers import SentenceTransformer
-            self.text_model = SentenceTransformer("paraphrase-MiniLM-L6-v2")
+            # Pinned commit: models are fetched from the Hub at startup.
+            self.text_model = SentenceTransformer("sentence-transformers/paraphrase-MiniLM-L6-v2", revision="c9a2bfebc254878aee8c3aca9e6844d5bbb102d1")
             self.text_model_available = True
             logger.info("SentenceTransformer loaded for text embeddings.")
         except Exception as e:
@@ -181,6 +182,8 @@ class CivicIssueDuplicateDetector:
 
         # Spatial index for fast geo-gating
         self.location_grid: dict = defaultdict(list)
+        # Guards the appends in add_report (sync routes run on several threads).
+        self._add_lock = threading.Lock()
 
     # ─────────────────────────────────────────
     #  Feature Extraction
@@ -196,10 +199,9 @@ class CivicIssueDuplicateDetector:
 
             # Resolve to PIL Image
             if isinstance(image_input, str):
+                # Base64 only: a short string used to be opened as a server file path, which no caller needs.
                 if image_input.startswith("data:") or len(image_input) > 500:
                     pil_img = _decode_base64_image(image_input)
-                elif os.path.exists(image_input):
-                    pil_img = Image.open(image_input).convert("RGB")
                 else:
                     return np.zeros(2048 if self.image_model_available else 100)
             elif isinstance(image_input, bytes):
@@ -287,27 +289,31 @@ class CivicIssueDuplicateDetector:
         Add a report to the in-memory index.
 
         Required keys: text, location ([lat, lon]), issue_type.
-        Optional keys: id, image_base64, image_path, image_bytes.
+        Optional keys: id, image_base64, image_bytes.
         """
         try:
             for field in ("text", "location", "issue_type"):
                 if field not in report:
                     raise ValueError(f"Missing required field: {field}")
 
-            image_input    = report.get("image_base64") or report.get("image_bytes") or report.get("image_path")
+            image_input    = report.get("image_base64") or report.get("image_bytes")
             image_features = self.extract_image_features(image_input)
             text_embedding = self.extract_text_features(report["text"])
 
-            idx = len(self.reports_db)
-            self.image_features_db.append(image_features)
-            self.text_embeddings_db.append(text_embedding)
-            self.text_raw_db.append(report["text"])
-            self.location_db.append(report["location"])
-            self.issue_types_db.append(report["issue_type"])
-            self.reports_db.append(report)
+            # Keep only what lookups read. The photo (a data URL of up to 4 MB) is already reduced to
+            # `image_features`; storing it too would grow memory by gigabytes over a few thousand reports.
+            summary = {k: report.get(k) for k in ("id", "text", "location", "issue_type")}
 
-            grid = self._location_to_grid(report["location"])
-            self.location_grid[grid].append(idx)
+            # The six lists must stay in step: two requests adding at once could take the same idx.
+            with self._add_lock:
+                idx = len(self.reports_db)
+                self.image_features_db.append(image_features)
+                self.text_embeddings_db.append(text_embedding)
+                self.text_raw_db.append(report["text"])
+                self.location_db.append(report["location"])
+                self.issue_types_db.append(report["issue_type"])
+                self.reports_db.append(summary)
+                self.location_grid[self._location_to_grid(report["location"])].append(idx)
 
             return idx
 
@@ -406,7 +412,7 @@ class CivicIssueDuplicateDetector:
                     logger.warning(f"Missing field: {field}")
                     return False, [], 0.0, []
 
-            image_input  = new_report.get("image_base64") or new_report.get("image_bytes") or new_report.get("image_path")
+            image_input  = new_report.get("image_base64") or new_report.get("image_bytes")
             new_img_feat = self.extract_image_features(image_input)
             new_txt_emb  = self.extract_text_features(new_report["text"])
             new_loc      = new_report["location"]
@@ -514,28 +520,6 @@ class CivicIssueDuplicateDetector:
         except Exception as e:
             logger.error(f"process_json_input error: {e}")
             return {"is_duplicate": 0, "error": str(e)}
-
-    # ─────────────────────────────────────────
-    #  Cluster building (retained for API compat)
-    # ─────────────────────────────────────────
-
-    def build_clusters(self):
-        """
-        Optional: Build KMeans clusters from all stored image features.
-        Not required for duplicate detection — retained for compatibility.
-        """
-        from sklearn.cluster import KMeans
-
-        try:
-            if len(self.reports_db) < 2:
-                return
-            n = max(2, min(len(self.reports_db) // 2, 50))
-            n = min(n, len(self.reports_db))
-            kmeans = KMeans(n_clusters=n, random_state=42, n_init=10)
-            kmeans.fit(np.array(self.image_features_db))
-            logger.info(f"KMeans clustering complete ({n} clusters).")
-        except Exception as e:
-            logger.error(f"Error building clusters: {e}")
 
 
 def create_detector(**kwargs) -> CivicIssueDuplicateDetector:

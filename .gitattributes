@@ -3,3 +3,11 @@
 *.pt binary
 *.pth binary
 *.onnx binary
+
+# Line endings: normalise text, but keep Unix scripts LF and Windows scripts CRLF on every OS,
+# so `android/gradlew` runs on Linux/macOS even when checked out on Windows.
+* text=auto
+*.sh text eol=lf
+gradlew text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

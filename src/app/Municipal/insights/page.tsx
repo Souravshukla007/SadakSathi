@@ -1,9 +1,13 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/AppHeader';
+import StaffNav from '@/components/traffic/StaffNav';
+import StatStrip from '@/components/traffic/StatStrip';
+import Reveal from '@/components/Reveal';
+import { BarList, DeskHeader, DonutChart, Panel } from '@/components/traffic/DeskUI';
+import { ChartColumn, ChartPie, CircleCheck, ClipboardList, Clock, Layers } from 'lucide-react';
 
 export default function MunicipalInsightsPage() {
     const router = useRouter();
@@ -22,16 +26,16 @@ export default function MunicipalInsightsPage() {
                 const authRes = await fetch('/api/auth/me');
                 if (!authRes.ok) { router.push('/auth'); return; }
                 
-                // Fetch feed
-                const feedRes = await fetch('/api/complaints/feed');
+                // The staff list holds every report (the public feed stops at 50); duplicates are counted via their original.
+                const feedRes = await fetch('/api/municipal/complaints');
                 if (feedRes.ok) {
-                    const data = await feedRes.json();
+                    const data = ((await feedRes.json()) as { isDuplicate: boolean; status: string; issueType: string }[]).filter((c) => !c.isDuplicate);
                     
                     let resolved = 0;
                     let pending = 0;
                     const byType: Record<string, number> = {};
                     
-                    data.forEach((c: any) => {
+                    data.forEach((c: { status: string; issueType: string }) => {
                         if (c.status === 'Completed' || c.status === 'ResolvedReviewed') resolved++;
                         else pending++;
                         
@@ -54,95 +58,54 @@ export default function MunicipalInsightsPage() {
         fetchInsights();
     }, [router]);
 
+    const byType = Object.entries(stats.byType).sort((a, b) => b[1] - a[1]).map(([type, value]) => ({ label: type || 'Unknown', value }));
+    const resolvedPct = Math.round((stats.resolved / Math.max(stats.total, 1)) * 100);
+
     return (
         <>
             <AppHeader dashboardMode />
-            <main className="flex-grow pt-16 h-screen flex flex-col bg-neutral-surface">
-                <div className="flex-grow flex w-full h-full overflow-hidden">
-                    
-                    {/* Sidebar */}
-                    <aside className="w-64 bg-text-primary text-white hidden lg:flex flex-col h-full z-10 shadow-soft flex-shrink-0">
-                        <div className="p-6 border-b border-white/10">
-                            <div className="text-xl font-heading font-bold flex items-center gap-2">
-                                <span className="text-2xl">🛣️</span> SadakSathi
-                            </div>
+            <main id="main-content" className="flex-grow pt-16 min-h-screen bg-neutral-surface lg:pl-64">
+                <StaffNav desk="municipal" />
+                <div className="px-4 py-6 sm:px-6 lg:px-8">
+                    <div className="mx-auto max-w-6xl">
+                        <DeskHeader icon={ChartColumn} title="Municipal insights" description="What citizens are reporting and how much of it is fixed." />
+
+                        <div className="mb-6">
+                            <StatStrip loading={loading} stats={[
+                                { label: 'Total complaints', value: stats.total, icon: ClipboardList, tone: 'neutral' },
+                                { label: 'Resolved', value: stats.resolved, icon: CircleCheck, tone: 'green', note: `${resolvedPct}% of all complaints` },
+                                { label: 'Open or in progress', value: stats.pending, icon: Clock, tone: 'amber' },
+                            ]} />
                         </div>
-                        <nav className="flex-grow p-4 space-y-1">
-                            <Link href="/Municipal" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-                                Dashboard
-                            </Link>
-                            <Link href="/Municipal/chat" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-                                Chats
-                            </Link>
-                            <Link href="/results?engine=road" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                                Last Report
-                            </Link>
-                            <Link href="/Municipal/insights" className="flex items-center gap-3 px-4 py-3 bg-brand-primary text-text-primary font-bold rounded-lg transition-all">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                                Insights
-                            </Link>
-                        </nav>
-                    </aside>
 
-                    {/* Main Content */}
-                    <div className="flex-grow p-8 overflow-y-auto">
-                        <div className="max-w-6xl mx-auto">
-                            <div className="flex justify-between items-center mb-8">
-                                <div>
-                                    <h1 className="text-3xl font-heading font-normal tracking-tight">Municipal Insights</h1>
-                                    <p className="text-sm text-text-secondary mt-1">Analytics on civic complaints and resolution times.</p>
-                                </div>
-                            </div>
-
-                            {loading ? (
-                                <div className="p-12 text-center text-text-secondary">
-                                    <div className="inline-block w-8 h-8 border-4 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin mb-3" />
-                                    <p className="text-sm">Loading insights…</p>
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                                        <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                                            <div className="text-xs font-mono font-bold text-text-secondary uppercase tracking-wider mb-2">Total Complaints</div>
-                                            <div className="text-4xl font-bold">{stats.total}</div>
-                                        </div>
-                                        <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                                            <div className="text-xs font-mono font-bold text-text-secondary uppercase tracking-wider mb-2">Resolved</div>
-                                            <div className="text-4xl font-bold text-green-600">{stats.resolved}</div>
-                                        </div>
-                                        <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                                            <div className="text-xs font-mono font-bold text-text-secondary uppercase tracking-wider mb-2">Pending / In Progress</div>
-                                            <div className="text-4xl font-bold text-yellow-600">{stats.pending}</div>
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-white p-8 rounded-2xl shadow-soft border border-border-light">
-                                        <h2 className="font-heading font-bold text-lg mb-6">Complaints by Type</h2>
-                                        <div className="space-y-4">
-                                            {Object.entries(stats.byType).map(([type, count]) => (
-                                                <div key={type}>
-                                                    <div className="flex justify-between text-sm mb-1">
-                                                        <span className="font-bold">{type || 'Unknown'}</span>
-                                                        <span className="text-text-secondary">{count}</span>
-                                                    </div>
-                                                    <div className="w-full bg-neutral-surface rounded-full h-3 overflow-hidden">
-                                                        <div 
-                                                            className="bg-brand-primary h-full rounded-full" 
-                                                            style={{ width: `${(count / Math.max(stats.total, 1)) * 100}%` }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            ))}
-                                            {Object.keys(stats.byType).length === 0 && (
-                                                <p className="text-text-secondary text-sm">No data available.</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                </>
-                            )}
+                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+                            <Reveal className="lg:col-span-2">
+                                <Panel title="Fixed so far" icon={ChartPie} className="h-full">
+                                    {loading ? (
+                                        <p className="py-12 text-center text-sm text-text-secondary">Loading insights…</p>
+                                    ) : (
+                                        <DonutChart
+                                            centerValue={`${resolvedPct}%`}
+                                            centerLabel="resolved"
+                                            segments={[
+                                                { label: 'Resolved', value: stats.resolved, tone: 'green' },
+                                                { label: 'Open or in progress', value: stats.pending, tone: 'amber' },
+                                            ]}
+                                        />
+                                    )}
+                                </Panel>
+                            </Reveal>
+                            <Reveal delay={70} className="lg:col-span-3">
+                                <Panel title="Complaints by type" icon={Layers} tone="red" className="h-full">
+                                    {loading ? (
+                                        <p className="py-12 text-center text-sm text-text-secondary">Loading insights…</p>
+                                    ) : byType.length === 0 ? (
+                                        <p className="py-12 text-center text-sm text-text-secondary">No complaints yet. Counts by hazard type appear here once citizens start reporting.</p>
+                                    ) : (
+                                        <BarList items={byType} tone="red" total={stats.total} />
+                                    )}
+                                </Panel>
+                            </Reveal>
                         </div>
                     </div>
                 </div>

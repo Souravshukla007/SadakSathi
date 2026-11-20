@@ -1,23 +1,27 @@
 'use client';
 
 import React from 'react';
+import { Smartphone } from 'lucide-react';
 
 interface DownloadAppButtonProps {
     onClick: () => void;
     compact?: boolean;
+    /** For dark backgrounds such as the footer. */
+    onDark?: boolean;
 }
 
-export default function DownloadAppButton({ onClick, compact = false }: DownloadAppButtonProps) {
+export default function DownloadAppButton({ onClick, compact = false, onDark = false }: DownloadAppButtonProps) {
     return (
         <button
+            type="button"
             onClick={onClick}
-            className={`flex items-center gap-1.5 border border-border-light rounded-lg font-medium text-sm text-text-secondary hover:bg-neutral-surface hover:text-text-primary transition-all ${compact ? 'px-3 py-2' : 'px-3.5 py-2'}`}
+            aria-label={compact ? 'Download app' : undefined}
+            className={`flex min-h-10 items-center gap-1.5 border rounded-lg font-semibold text-sm transition-colors px-3 py-2 ${onDark
+                ? "border-white/30 text-white hover:bg-white/10 hover:border-white/60 focus-visible:outline-white!"
+                : "border-border-light text-text-secondary hover:bg-neutral-surface hover:text-text-primary"}`}
         >
-            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                    d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
-            {!compact && <span>Download App</span>}
+            <Smartphone className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+            {!compact && <span>Download app</span>}
         </button>
     );
 }

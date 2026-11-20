@@ -15,7 +15,7 @@
 - ML models automatically detect and classify the hazard type.
 - A **duplication detection system** prevents redundant reports for the same issue (concept imported from a prior project).
 - Municipal authorities manage complaints via a dashboard.
-- A traffic violation detection module (helmet violations, triple riding, wrong-side driving) operates as a separate AI pipeline.
+- A traffic violation detection module (helmet violations, triple riding, number plates) operates as a separate AI pipeline. Wrong-side driving needs model weights the repo doesn't ship.
 - Gamification via leaderboard incentivizes citizen participation.
 
 ### Your Role (Developer Context)
@@ -37,7 +37,7 @@ You are the sole developer building the **FastAPI backend** (Python) to serve ML
 | **Notifications** | react-hot-toast | v2.4.1 |
 | **Fonts** | Google Fonts | Outfit (headings) + DM Sans (body) |
 | **Backend (Active)** | FastAPI (Python) | ML inference, duplication detection, traffic violations |
-| **ML Models (Active)** | YOLO-based detection + ResNet50 + SBERT | 7-class road hazard + 4-class traffic violation |
+| **ML Models (Active)** | YOLO-based detection + ResNet50 + SBERT | 7-class road hazard (pothole, garbage, garbage_overflow, 3 manhole classes, fallen_tree) + 4-class traffic (Plate, WithHelmet, WithoutHelmet, TripleRiding) |
 | **OCR (Active)** | Florence-2-base (0.23B VLM) | Plate text extraction via <OCR> task, ~460MB, ~1.6s/plate CPU |
 | **Deployment** | TBD | Vercel (frontend), likely Railway/Render (FastAPI) |
 
@@ -236,12 +236,12 @@ Deterministic, weighted per-signal threshold architecture. XGBoost removed (circ
 - **Type gate:** Issue types must match before comparison
 - **Location gate:** Reports > 100m apart skip expensive embedding comparisons
 - **Image weight penalty:** Without images, max score = 0.75 (text + location only); requires very high text similarity AND close proximity to trigger duplicate
-- **Validated:** 100-report test suite → 100% pass rate (87/87 assessed), mean inference 12.7ms
+- **Validated:** 100-report test suite → 87/87 graded cases pass, 0 fail (13 borderline cases are logged, not graded); measured 62 ms median / 76 ms mean per check on a laptop CPU (Nov 2026)
 
 ### 9.3 Traffic Violation Detection (Active)
 - Helmet / No Helmet detection (YOLO)
 - Triple riding detection (YOLO)
-- Wrong-side driving detection (YOLO)
+- Wrong-side driving: NOT detected by the bundled model (`traffic_model_nano_worse.pt` classes: Plate, WithHelmet, WithoutHelmet, TripleRiding); the code handles it only with other weights
 - Number plate detection (YOLO) + OCR text extraction
   - **Active:** Florence-2-base VLM (`microsoft/Florence-2-base`, 0.23B params, ~460MB)
   - Uses `<OCR>` task prompt on YOLO-cropped plate regions
@@ -308,7 +308,7 @@ Deterministic, weighted per-signal threshold architecture. XGBoost removed (circ
 - [x] Build FastAPI backend with `/detect` endpoint (accepts image, returns detection results)
 - [x] Integrate YOLO models for pothole, manhole, garbage, fallen tree detection
 - [x] Implement duplication detection system v2 (deterministic, per-signal thresholds)
-- [x] Validate duplication engine with 100-report test suite (100% pass rate)
+- [x] Validate duplication engine with 100-report test suite (87/87 graded cases pass)
 - [x] Set up Python 3.12 venv with pinned compatible dependencies
 - [x] Migrate plate OCR from EasyOCR → Florence-2-base (validated on 4 Indian plate images)
 - [ ] Connect Next.js upload flow to FastAPI for real ML inference

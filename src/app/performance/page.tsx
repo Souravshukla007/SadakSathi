@@ -1,95 +1,73 @@
-"use client";
-
-import React, { useEffect } from "react";
+import React from "react";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
+import Reveal from "@/components/Reveal";
+import IconTile from "@/components/landing/IconTile";
+import PageHero from "@/components/landing/PageHero";
+import { Gauge, GitMerge, ListChecks, Route, ScanSearch, ScanText, type LucideIcon } from "lucide-react";
+
+// Figures as recorded in the project README; they change with hardware and model weights.
+const METRICS: { name: string; value: string; detail: string; icon: LucideIcon }[] = [
+    // Measured November 2026 on a 20-thread laptop CPU, no GPU. Re-measure on your own hardware.
+    { name: "Road hazard detection", value: "~0.3 s", detail: "Median time for one photo, from upload to result, including priority scoring and the marked-up image.", icon: ScanSearch },
+    { name: "Road model accuracy", value: "0.81", detail: "mAP50 of the bundled road model on its validation set: potholes, garbage, overflowing garbage, manholes and fallen trees.", icon: Route },
+    { name: "Duplicate check", value: "~60 ms", detail: "Median time to compare a new report with earlier ones (76 ms mean) in the project's test suite.", icon: GitMerge },
+    { name: "Duplicate test suite", value: "87 / 87", detail: "Graded cases passed in the 100-report test suite. The other 13 are borderline cases that are logged, not graded.", icon: ListChecks },
+    { name: "Number plate reading", value: "3 of 4", detail: "Test plates read exactly; the fourth was read partly from a tiny crop. About 1.6 s per plate, once per tracked vehicle. A small sample, so expect misses.", icon: ScanText },
+];
+
+const FLOORS = [
+    { label: "Always high", chip: "bg-signal-red/10 text-signal-red", items: "Open manholes" },
+    { label: "At least medium", chip: "bg-hazard/15 text-hazard-ink", items: "Broken signs, broken street lights, overflowing garbage" },
+    { label: "Size and depth decide", chip: "border border-border-dark text-text-primary", items: "Potholes, garbage piles, fallen trees" },
+];
 
 export default function PerformancePage() {
-    useEffect(() => {
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('animate-on-scroll-visible');
-                    observer.unobserve(entry.target);
-                }
-            });
-        }, { threshold: 0.1 });
-        
-        document.querySelectorAll('[data-animation-on-scroll]').forEach(el => {
-            if (!el.classList.contains('animate-on-scroll-hidden')) {
-                el.classList.add('animate-on-scroll-hidden');
-            }
-            observer.observe(el);
-        });
-
-        return () => observer.disconnect();
-    }, []);
-
     return (
         <>
             <AppHeader />
-            <main className="flex-grow">
-                <section className="pt-32 pb-24 px-6 bg-neutral-background min-h-screen">
-                    <div className="max-w-7xl mx-auto">
-                        {/* Header */}
-                        <div className="max-w-3xl mb-16" data-animation-on-scroll="">
-                            <div className="inline-block px-3 py-1 bg-brand-primary/10 text-brand-primary text-[10px] font-bold rounded-full uppercase tracking-widest mb-4">Model v2.4 Research</div>
-                            <h1 className="text-5xl md:text-6xl font-heading font-bold tracking-tight text-text-primary mb-6">AI Model Performance</h1>
-                            <p className="text-xl text-text-secondary">Deep academic benchmarks and real-world performance metrics for our specialized infrastructure vision models.</p>
-                        </div>
+            <main id="main-content" className="flex-grow">
+                <PageHero
+                    wide
+                    title="How the models perform"
+                    icon={Gauge}
+                    lead={<>Speed and accuracy measured on the project&apos;s own test runs. Your numbers will differ with the server&apos;s hardware.</>}
+                />
 
-                        {/* Metrics Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16" data-animation-on-scroll="">
-                            {/* Metric 1 */}
-                            <div className="bg-white p-10 rounded-3xl border border-border-light shadow-soft group hover:border-brand-primary transition-all">
-                                <h4 className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-2">Precision</h4>
-                                <p className="text-5xl font-bold text-text-primary mb-4">94.8%</p>
-                                <p className="text-xs text-text-secondary">Accuracy of detected potholes across daylight and low-light environments.</p>
-                            </div>
-                            {/* Metric 2 */}
-                            <div className="bg-white p-10 rounded-3xl border border-border-light shadow-soft group hover:border-brand-primary transition-all">
-                                <h4 className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-2">Recall</h4>
-                                <p className="text-5xl font-bold text-text-primary mb-4">91.2%</p>
-                                <p className="text-xs text-text-secondary">Ability to correctly identify all existing road hazards in a single frame pass.</p>
-                            </div>
-                            {/* Metric 3 */}
-                            <div className="bg-white p-10 rounded-3xl border border-border-light shadow-soft group hover:border-brand-primary transition-all">
-                                <h4 className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-2">F1 Score</h4>
-                                <p className="text-5xl font-bold text-text-primary mb-4">92.9</p>
-                                <p className="text-xs text-text-secondary">Weighted average balance between precision and recall metrics.</p>
-                            </div>
-                            {/* Metric 4 */}
-                            <div className="bg-white p-10 rounded-3xl border border-border-light shadow-soft group hover:border-brand-primary transition-all">
-                                <h4 className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-2">mAP @ .50</h4>
-                                <p className="text-5xl font-bold text-text-primary mb-4">0.86</p>
-                                <p className="text-xs text-text-secondary">Mean Average Precision at 50% intersection over union threshold.</p>
-                            </div>
-                            {/* Metric 5 */}
-                            <div className="bg-white p-10 rounded-3xl border border-border-light shadow-soft group hover:border-brand-primary transition-all">
-                                <h4 className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-2">False Positive Rate</h4>
-                                <p className="text-5xl font-bold text-text-primary mb-4">1.2%</p>
-                                <p className="text-xs text-text-secondary">Minimal misidentification of shadows or road debris as potholes.</p>
-                            </div>
-                            {/* Metric 6 */}
-                            <div className="bg-white p-10 rounded-3xl border border-border-light shadow-soft group hover:border-brand-primary transition-all">
-                                <h4 className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-2">Inference Time</h4>
-                                <p className="text-5xl font-bold text-text-primary mb-4">42<span className="text-2xl">ms</span></p>
-                                <p className="text-xs text-text-secondary">Processing latency on NVIDIA Jetson Orin edge-computing hardware.</p>
-                            </div>
-                        </div>
+                <section className="py-14 md:py-20 px-4 sm:px-6 bg-neutral-background">
+                    <div className="max-w-6xl mx-auto">
+                        <dl className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                            {METRICS.map((m, i) => (
+                                <Reveal key={m.name} delay={i * 70} className="group rounded-xl border border-border-light bg-surface p-6 elevated">
+                                    <dt className="flex items-center gap-3 font-bold text-text-primary">
+                                        <IconTile icon={m.icon} small />
+                                        {m.name}
+                                    </dt>
+                                    <dd className="mt-5 font-heading text-4xl font-normal tracking-tighter tabular-nums text-text-primary">{m.value}</dd>
+                                    <dd className="mt-2 text-text-secondary leading-relaxed">{m.detail}</dd>
+                                </Reveal>
+                            ))}
+                        </dl>
 
-                        {/* Methodology */}
-                        <div className="bg-neutral-surface p-12 rounded-3xl border border-border-light" data-animation-on-scroll="">
-                            <div className="max-w-3xl">
-                                <h3 className="font-heading text-2xl font-bold mb-6">Validation Methodology</h3>
-                                <p className="text-text-secondary leading-relaxed mb-6">
-                                    Model v2.4 was trained on a proprietary dataset of 120,000+ high-resolution road frames spanning 12 different weather conditions and 4 distinct geographical road types. Our validation sets are audited by civil engineering experts to ensure depth estimation accuracy aligns with real-world physical measurements.
+                        <Reveal className="mt-16 grid gap-8 rounded-xl border border-border-light bg-neutral-surface p-6 sm:p-10 lg:grid-cols-2 lg:gap-12">
+                            <div>
+                                <h2 className="font-heading text-2xl font-normal tracking-tighter mb-4">How priority is set</h2>
+                                <p className="text-text-secondary leading-relaxed mb-4">
+                                    For each road hazard, the model measures how much of the photo it covers and estimates its depth from the shadow inside it. Those two numbers decide whether it&apos;s high, medium or low priority.
                                 </p>
-                                <button className="px-8 py-4 bg-text-primary text-white font-bold rounded-lg shadow-soft hover:shadow-medium transition-all">
-                                    Download Whitepaper (PDF)
-                                </button>
+                                <p className="text-text-secondary leading-relaxed">
+                                    Some hazards have a floor: an open manhole is always high priority, and broken signs, broken street lights and overflowing garbage are at least medium. A photo with two or more high-priority hazards, or a cluster of three or more close together, is marked high overall.
+                                </p>
                             </div>
-                        </div>
+                            <ul className="space-y-3 self-center">
+                                {FLOORS.map((f) => (
+                                    <li key={f.label} className="rounded-lg border border-border-light bg-surface p-4">
+                                        <span className={`inline-block text-sm font-semibold px-2.5 py-0.5 rounded ${f.chip}`}>{f.label}</span>
+                                        <p className="mt-2 text-text-primary">{f.items}</p>
+                                    </li>
+                                ))}
+                            </ul>
+                        </Reveal>
                     </div>
                 </section>
             </main>

@@ -6,7 +6,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org)
 [![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io)
 
-An AI-powered civic road intelligence and traffic enforcement platform that leverages multi-class object detection, real-time object tracking, geospatial indexing, and multimodal duplicate suppression to optimize municipal responsiveness and automate traffic compliance.
+An AI-powered civic road intelligence and traffic enforcement platform that leverages multi-class object detection, multi-object tracking in video, geospatial indexing, and multimodal duplicate suppression to help cities respond to road hazards and traffic violations.
 
 ---
 
@@ -14,18 +14,18 @@ An AI-powered civic road intelligence and traffic enforcement platform that leve
 
 If you are a recruiter or hiring manager reviewing this repository, here is the technical complexity in a nutshell:
 
-| Core Engineering Dimension | Production-Grade Implementation Details |
+| Core Engineering Dimension | Implementation Details |
 | :--- | :--- |
 | **System Architecture** | **Decoupled Dual-Server**: Next.js App Router full-stack web/API server + independent FastAPI ML inference engine serving local neural pipelines. |
-| **Civic Road Detection** | **YOLOv8 Segmentation (`best_municipal.pt`)** with custom individual priority scoring based on bounding contour area ratio and gray-level shadow-contrast depth heuristics. |
-| **Traffic Enforcement** | **YOLOv8 Violation Detector (`best_traffic.pt`)** integrated with **ByteTrack / BoT-SORT** trackers to de-duplicate moving violations by persistent `track_id`. |
-| **Multimodal Duplication Engine** | **Deterministic Threshold Gating (v2)**: Eliminates duplicate citizen reports in **12.7ms** using a spatial hash grid pre-filter, ResNet50 visual embeddings, SBERT semantic text similarity, and Haversine scoring. |
-| **License Plate OCR** | **Florence-2-base VLM** (`microsoft/Florence-2-base`) running custom greedy decode pipelines. OCR is restricted to **exactly once per tracked vehicle ID**, cutting VLM CPU cycles by **95%**. |
+| **Civic Road Detection** | **YOLO26n detector (`best_whole_model_nano.pt`)** with custom individual priority scoring based on bounding contour area ratio and gray-level shadow-contrast depth heuristics. |
+| **Traffic Enforcement** | **YOLO26n violation detector (`traffic_model_nano_worse.pt`)** integrated with **ByteTrack / BoT-SORT** trackers to de-duplicate moving violations by persistent `track_id`. |
+| **Multimodal Duplication Engine** | **Deterministic Threshold Gating (v2)**: Catches duplicate citizen reports in about **60 ms** per check on a laptop CPU, using a spatial hash grid pre-filter, ResNet50 visual embeddings, SBERT semantic text similarity, and Haversine scoring. |
+| **License Plate OCR** | **Florence-2-base VLM** (`microsoft/Florence-2-base`) running custom greedy decode pipelines. OCR is restricted to **exactly once per tracked vehicle ID**, so a vehicle seen in 100 frames is read once, not 100 times. |
 
 ### 🚀 Key Technical Achievements
 *   **Zero-Overhead Gating:** Coarse spatial grid index filters out candidate reports $>100\text{m}$ away in $O(1)$ time, skipping expensive neural embedding extraction.
 *   **Florence-2 PyTorch Patching:** Custom VLM loading routine using eager attention graphs (`attn_implementation="eager"`) and cached execution blocks (`use_cache=False`) to run VLM models stably on CPU-optimized PyTorch 2.2.2 runtimes.
-*   **100% Pass Rate Test Suite:** The duplication detection system is verified under a rigorous 100-report test suite containing identical, near-duplicate, paraphrased, cross-class, and remote location anomalies.
+*   **No Failures in the Duplicate Test Suite:** The duplication engine passes all 87 graded cases of a 100-report suite covering identical, near-duplicate, paraphrased, cross-class, and remote-location reports. The other 13 are borderline cases that are logged, not graded.
 
 ---
 
@@ -33,9 +33,9 @@ If you are a recruiter or hiring manager reviewing this repository, here is the 
 
 ### 1. Heavy VLM CPU Latency Optimization
 > [!IMPORTANT]
-> **Challenge:** Vision Language Models (like Microsoft's Florence-2-base) provide highly accurate text reading (~75% on Indian license plates vs 13% for ONNX-based solutions), but greedy VLM generation takes ~1.6 seconds on standard CPU nodes. Triggering OCR on every single video frame creates massive execution bottlenecks.
+> **Challenge:** Vision Language Models (like Microsoft's Florence-2-base) read plates far better than small ONNX readers (in a small test on Indian plates, Florence-2 read 3 of 4 exactly, where a CCT-based ONNX reader managed about 13%), but greedy VLM generation takes ~1.6 seconds on standard CPU nodes. Triggering OCR on every single video frame creates massive execution bottlenecks.
 >
-> **Solution:** A **de-duplicated tracking-to-OCR bridge** was engineered. By pairing the YOLO vehicle model with a persistent tracker (`ByteTrack` or `BoT-SORT`), the VLM OCR engine is triggered **exactly once per unique tracking ID** instead of once per frame. The resulting alphanumeric text is cached globally in the active tracking dict. This optimization **slashed VLM CPU utilization by 95%** and allowed the pipeline to process full CCTV streams.
+> **Solution:** A **de-duplicated tracking-to-OCR bridge** was engineered. By pairing the YOLO vehicle model with a persistent tracker (`ByteTrack` or `BoT-SORT`), the VLM OCR engine is triggered **exactly once per unique tracking ID** instead of once per frame. The resulting alphanumeric text is cached in the active tracking dict, so OCR cost grows with the number of vehicles, not the number of frames. Video comes from uploaded files; live camera streams are not supported.
 
 ### 2. Eliminating Rust-Binary Compilation Failures on Serverless CPU
 > [!TIP]
@@ -62,8 +62,8 @@ If you are a recruiter or hiring manager reviewing this repository, here is the 
 
 ## 🎯 Why This Project Matters
 
-**sadakSathi** represents a practical, production-ready approach to real-world AI applications:
-*   **Zero External API Expenses:** Bypasses costly cloud APIs (like OpenAI or Google Cloud Vision) by serving local, specialized neural networks (YOLOv8 + Florence-2 base VLM) directly inside a FastAPI container.
+**sadakSathi** represents a practical approach to real-world AI applications:
+*   **Zero External API Expenses:** Bypasses costly cloud APIs (like OpenAI or Google Cloud Vision) by serving local, specialized neural networks (YOLO26n + Florence-2 base VLM) directly inside a FastAPI container.
 *   **Spam Suppression at Scale:** Prevents ticket duplication using a highly optimized, multimodal, deterministic threshold pipeline ($O(1)$ spatial hash grid pre-filter, ResNet50 visual embeddings, SBERT semantic text similarity) to block redundant reports.
 *   **Production-Grade Decoupling:** Decouples CPU-heavy AI model inference from transactional web routes. Next.js handles user sessions, upvotes, and dashboard interfaces, while FastAPI manages neural networks and coordinate geometry checks.
 
@@ -73,26 +73,28 @@ If you are a recruiter or hiring manager reviewing this repository, here is the 
 
 Modern cities suffer from fragmented infrastructure maintenance and high rates of unpenalized traffic violations. Citizen hazard reporting is often plagued by redundant submissions of the same issue (creating ticket noise for municipal crews) and lacks objective priority sorting. Concurrently, traffic enforcement agencies struggle to scale monitoring systems for safety violations like triple-riding, riding without helmets, and wrong-side driving. 
 
-**sadakSathi** bridges these gaps by providing an automated, AI-driven civic reporting portal and traffic enforcement suite. By detecting real-time road hazards, de-duplicating redundant citizen complaints, and automating number plate OCR and violation tracking from CCTV/dashcam feeds, the platform transforms raw visual data into structured municipal action.
+**sadakSathi** bridges these gaps by providing an automated, AI-driven civic reporting portal and traffic enforcement suite. By detecting road hazards in uploaded photos and video, de-duplicating redundant citizen complaints, and automating number plate OCR and violation tracking in uploaded CCTV/dashcam footage, the platform transforms raw visual data into structured municipal action.
 
 ---
 
 ## 🌟 Core Capabilities
 
 ### 🚧 Road Hazard Detection
-Uses a highly optimized YOLO-based model (`best_municipal.pt`) with a custom priority estimation heuristic. The platform detects pothole damage, garbage piles, open manhole covers, and road obstructions. It automatically ranks hazard severity based on spatial contour area ratios and shadow-contrast depth estimation, allowing municipalities to allocate road maintenance budgets dynamically.
+Uses a highly optimized YOLO-based model (`best_whole_model_nano.pt`) with a custom priority estimation heuristic. The platform detects potholes, garbage piles, overflowing garbage, broken or open manholes, and fallen trees. It ranks hazard severity from contour area ratios and a shadow-contrast depth estimate, so staff can fix the worst damage first.
 
 ### 🔍 Duplicate Report Detection (v2)
-Prevents ticket fatigue by screening incoming complaints against existing reports using a deterministic, multi-modal threshold algorithm. By pairing Sentence-BERT (SBERT) text embeddings and ResNet50 visual embeddings with Haversine geospatial proximity gating, the engine accurately identifies duplicates in less than 15ms.
+Prevents ticket fatigue by screening incoming complaints against existing reports using a deterministic, multi-modal threshold algorithm. By pairing Sentence-BERT (SBERT) text embeddings and ResNet50 visual embeddings with Haversine geospatial proximity gating, the engine passes every graded case in the project's test suite, at about 60 ms per check on a laptop CPU.
+
+How it is used: when a complaint is filed, the web app first applies a persistent rule (same issue type within 100 m in the last 30 days). If that finds nothing, it asks this engine (text + photo + location, 5 s timeout) and then adds the new report to the engine's index. If the ML server is down, the location rule still applies. The engine's index is in memory, so it starts empty after a restart.
 
 ### 📝 License Plate Recognition (OCR)
-Integrates Microsoft’s state-of-the-art Florence-2-base Vision Language Model (VLM). Crop coordinates generated by the YOLO vehicle-enforcement pipeline are passed directly to Florence-2. Using specialized greedy-decode routines, the model extracts high-fidelity alphanumeric data from Indian license plates even under poor lighting, enabling hands-free e-challan generation.
+Integrates Microsoft’s Florence-2-base Vision Language Model (VLM). Crop coordinates generated by the YOLO traffic pipeline are passed directly to Florence-2, which reads the plate text with a greedy decode, so traffic staff can issue e-challans without typing plates by hand. Small or blurry plates may be read only partly. OCR can be switched off with `OCR_ENABLED=false`.
 
 ### 📱 Citizen Reporting
 Empowers citizens to log complaints, upload evidence (photos/videos), and track resolving steps. Integrated community-upvoting mechanics prioritize highly-voted issues in the public feed, while gamification leaderboards incentivize civic engagement.
 
 ### 🏛️ Administrative Dashboard
-Provides municipal administrators and traffic police with a command-and-control portal. Features include interactive geographic hot-spot visualization, authority-to-citizen chat panels, automated challan auditing, and structured maintenance report dispatch systems.
+Gives municipal staff and traffic police their own desks. Municipal staff change complaint status, add remarks, view summary charts and chat with the citizen who reported. Traffic police review AI-flagged violations and issue challans, with the fine set by violation type.
 
 ---
 
@@ -103,14 +105,14 @@ graph TD
     A[Citizen / CCTV Media Upload] --> B{Pipeline Route}
     
     %% Road Hazard Pipeline
-    B -->|Road Hazard Image/Video| C[YOLOv8 Segmentation - best_municipal.pt]
+    B -->|Road Hazard Image/Video| C[YOLO26n - best_whole_model_nano.pt]
     C --> D[Contour Analysis & Area Ratio Computation]
     C --> E[Shadow & Contrast Depth Estimation]
     D & E --> F[Priority & Proximity Clustering]
     F --> G[Annotated Output Generation]
     
     %% Traffic Violation Pipeline
-    B -->|Traffic Feed Image/Video| H[YOLOv8 Detection - best_traffic.pt]
+    B -->|Traffic Feed Image/Video| H[YOLO26n - traffic_model_nano_worse.pt]
     H --> I{Unique Vehicle Tracking}
     I -->|ByteTrack / BoT-SORT| J[Track ID Assignment & De-duplication]
     J --> K[Violation Class Extraction]
@@ -139,15 +141,18 @@ graph TD
 
 ## 🧠 Detection Pipeline & Workflows
 
-The core image and video inference pipeline runs on the FastAPI backend, utilizing specialized, class-tuned neural networks to maximize precision and keep processing latency under the 100ms mark.
+The core image and video inference pipeline runs on the FastAPI backend, using small "nano" YOLO models so it stays usable on a CPU.
 
 ### Model Weights
-*   **Road Hazard Detector (`best_municipal.pt`):** An ultralight YOLOv8 instance trained on 50,000+ custom municipal samples. Operates at an optimal sensitivity threshold of `0.20`.
-*   **Traffic Violation Detector (`best_traffic.pt`):** A custom YOLOv8 model tuned for street views and traffic cameras, trained on multi-class violation and vehicle datasets.
+*   **Road Hazard Detector (`best_whole_model_nano.pt`):** YOLO26n, mAP50 0.81 on its validation set. Runs at a confidence threshold of `0.20`.
+*   **Traffic Violation Detector (`traffic_model_nano_worse.pt`):** YOLO26n trained for helmets, triple riding and number plates.
 
 ### Classes Detected
-*   **Road Hazards:** `pothole`, `garbage`, `overflow_garbage`, `manhole_cover`, `broken_sign`, `broken_street_light`, `fallen_tree`
-*   **Traffic Detections:** `helmet`, `no_helmet`, `number_plate`, `number_plate_missing`, `triple_riding`, `wrong_side_moving`, `vehicle`, `motorcycle`, `car`, `bike`, `truck`, `bus`
+These are the classes inside the bundled weights (checked with `YOLO(path).names`):
+*   **Road Hazards:** `pothole`, `garbage`, `garbage_overflow`, `manhole_broken`, `manhole_lose`, `manhole_uncovered`, `fallen_tree`
+*   **Traffic:** `Plate`, `WithHelmet`, `WithoutHelmet`, `TripleRiding`
+
+The code also maps `broken_sign`, `broken_street_light`, `wrong_side_moving` and vehicle classes, but those need other weights (set `MODEL_PATH` / `TRAFFIC_MODEL_PATH`). **Wrong-side driving is not detected with the bundled traffic model.**
 
 ### Inference & Severity Workflows
 
@@ -167,7 +172,7 @@ For images containing multiple hazards, an in-memory hierarchical proximity clus
 
 ## 🔍 Duplicate Detection Engine Details
 
-To eliminate ticket spam, sadakSathi features a multi-modal de-duplication engine (suppressing duplicate complaints in **12.7ms**).
+To cut ticket spam, sadakSathi features a multi-modal de-duplication engine.
 
 ### Signal Score Formulation
 1.  **Visual Similarity ($S_{\text{img}}$):** Uses ResNet50 (pre-classification layer) to extract a $2048$-dimensional feature vector from the uploaded image. If no image is provided, a pure-Python BGR color-histogram fallback vector ($100$-dimensional) is generated. The score is computed using Cosine Similarity:
@@ -193,11 +198,14 @@ Candidates are retrieved in an $O(1)$ lookup containing the target grid cell and
 
 ## 📈 Performance Metrics
 
-*   **Road Hazard Detection Speed:** Sub-`45ms` inference latency per frame on CUDA-enabled GPUs; `95ms` mean execution time on mid-tier CPU environments.
-*   **Object-Tracking Traffic Pipeline:** ~`35ms` tracker execution loop (using ByteTrack configurations) allowing real-time processing of high-definition traffic feeds.
-*   **Duplicate Engine Throughput:** Over `10,000` multi-modal comparisons processed per second on indexed memory arrays, with a mean individual query time of `12.7ms` on CPU.
-*   **Duplicate Detection Validation:** 100% pass rate achieved on the deterministic 100-report integration test suite (`tests/test_duplication_100.py`), maintaining zero false positives across varying test categories.
-*   **Florence-2 OCR Accuracy:** Achieved `75%+` exact alphanumeric accuracy on standard Indian vehicle plates (with crop-padding offsets of `6px`), running at `1.6s` mean processing latency on standard CPU environments.
+Measured in November 2026 on a 20-thread laptop CPU with no GPU, with the web app and ML server running. Your numbers will differ with hardware; re-run the commands to check.
+
+*   **Road Hazard Detection:** about `0.3 s` median per photo, from upload to result, including priority scoring and the marked-up image (10 timed runs against `POST /detect/image`).
+*   **Road Model Accuracy:** mAP50 `0.81` on its validation set.
+*   **Duplicate Check:** `62 ms` median, `76 ms` mean per check in `tests/test_duplication_100.py`.
+*   **Duplicate Detection Validation:** 87 of 87 graded cases pass, 0 fail, in the 100-report suite (`tests/test_duplication_100.py`). The other 13 are borderline cases that are logged, not graded.
+*   **Florence-2 OCR:** 3 of 4 test plates read exactly, the fourth partly (a tiny crop); about `1.6 s` per plate on a CPU. This is a small sample, so expect misses.
+*   **Not measured:** video tracking speed and GPU speed.
 
 ---
 
@@ -234,7 +242,7 @@ The system uses a PostgreSQL database, managed through Prisma ORM.
 *   **User:** Contains account information, avatars (saved as text-based URIs), geographic details (city, state), and points for civic gamification. One-to-many relationship with `Complaint`, `Feedback`, `Upvote`, and auditing logs (`UserActivity`).
 *   **Complaint:** Citizen-reported road issues. Contains coordinates, addresses, and state variables (`isDuplicate` and `originalReportId` to hook into the duplicate detection pipeline).
 *   **DetectionResult:** Saved outputs from the YOLO road-hazard model. Links back to the `Complaint` record and contains a raw `Json` field (`payload`) storing coordinates, confidence scores, and individual class priority assignments.
-*   **VehicleDetection & TrafficViolation:** Tracked vehicles from the CCTV traffic pipelines are saved in `VehicleDetection`. Any detected violation (helmet, triple-riding, wrong-side moving) references a `VehicleDetection` parent ID.
+*   **VehicleDetection & TrafficViolation:** Tracked vehicles from the CCTV traffic pipelines are saved in `VehicleDetection`. Any detected violation (helmet, triple riding) references a `VehicleDetection` parent ID.
 *   **Challan:** Integrates directly with the `TrafficViolation` model via a one-to-one relationship. Automatically maps fine amounts based on the violation type.
 </details>
 
@@ -252,7 +260,7 @@ The system uses a PostgreSQL database, managed through Prisma ORM.
 | **Auth & Security** | JWT (`jose`) + `bcryptjs` | — | Secure httpOnly cookies, password hashing |
 | **Server Framework** | FastAPI (Python) | `^0.115.0` | Heavy machine learning endpoints, vector checks |
 | **Core AI Framework** | PyTorch (CPU-optimized) | `2.2.2+cpu` | Neural network backend |
-| **Object Detection** | Ultralytics YOLOv8 | `^8.2.0` | Custom municipal and traffic models |
+| **Object Detection** | Ultralytics YOLO26 | `>=8.4.0` | Bundled YOLO26n road and traffic models |
 | **VLM & OCR** | Transformers (Florence-2) | `^4.40.0` | License plate character extraction |
 | **NLP Embeddings** | Sentence-Transformers | `^3.0.0` | SBERT paraphrase semantic vectors |
 | **Geospatial Engine** | Geopy | `^2.4.0` | Haversine distance computations |
@@ -296,7 +304,6 @@ sadakSathi/
 │   │   ├── detection.py      # Road Hazard endpoints (/detect/image, /video)
 │   │   ├── traffic.py        # Violation tracking endpoints (/detect/traffic)
 │   │   ├── duplication.py    # Duplicate check endpoints (/duplicate/check)
-│   │   └── stats.py          # Session-scoped aggregate counters
 │   └── tests/                # Suite & Integration Verification
 │       ├── test_duplication_100.py   # 100-report deterministic suite
 │       └── test_florence_ocr.py       # Indian plate VLM validation checks
@@ -317,7 +324,7 @@ sadakSathi/
 *   **Request Type:** `multipart/form-data`
 *   **Parameters:**
     *   `file`: `UploadFile` (Required)
-    *   `conf_threshold`: `float` (Default: `0.20` - tuned for `best_municipal.pt`)
+    *   `conf_threshold`: `float` (Default: `0.20` - tuned for `best_whole_model_nano.pt`)
     *   `include_annotated`: `bool` (Default: `True` - returns base64 annotated image)
 *   **Success Response (200 OK):**
     ```json
@@ -343,7 +350,7 @@ sadakSathi/
     }
     ```
 
-#### 2. Traffic Violation Assessment (Video Stream)
+#### 2. Traffic Violation Assessment (Uploaded Video)
 *   **Endpoint:** `POST /detect/traffic/video`
 *   **Request Type:** `multipart/form-data`
 *   **Parameters:**
@@ -412,144 +419,176 @@ sadakSathi/
 
 ---
 
-## 🛠️ Step-by-Step Setup Guide
+## 📘 User Guide
 
-Follow this step-by-step developer guide to get both servers running locally.
+An animated, step-by-step guide is built into the app at **`/guide`** (also linked as "How it works" in the header and "User guide" in the footer). It has two tracks:
+
+* **For citizens:** log in, scan a photo or video, read the detected hazards and their priority, send the report with its location, see how duplicates are linked, then track status, upvote and chat with the department.
+* **For city staff:** the municipal desk (open a report, set status and remarks, mark duplicates, attach a resolution photo before completing, reply to citizens) and the traffic desk (review detected violations, plate read once per vehicle, issue a challan).
+
+Each step has a looping animated scene of the real screen. Animations only run while on screen, can be paused with the "Pause animations" button, and show their final frame statically when the operating system's "reduce motion" setting is on.
+
+---
+
+## 🛠️ Setup (Windows and Linux)
+
+Everything below works on both. Where the commands differ, both are shown.
 
 ### Prerequisites
-*   Node.js (v18.x or newer)
-*   Python 3.12 (specifically required for pinned library compilation and ONNX execution compatibility)
-*   PostgreSQL Database instance
+* Node.js **20.12 or newer** (the scripts use Node's built-in `.env` loader)
+* Python **3.12**
+* PostgreSQL 14+ (any install; a no-installer option is shown below)
 
-### 1. Initialize Backend Services (FastAPI)
+### 1. Configure environment files
 
-Navigate to the backend directory, initialize a virtual environment, and install dependencies:
+```bash
+cp .env.example .env
+cp backend/.env.example backend/.env
+```
+On Windows PowerShell use `Copy-Item` instead of `cp`. Then fill in `.env`:
+
+| Variable | What it is |
+| :--- | :--- |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `JWT_SECRET` | Signs login cookies. **Required in production** (the app refuses to start without it). Generate: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
+| `AUTHORITY_SEED_PASSWORD` | Password given to the seeded municipal and traffic staff accounts |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google sign-in |
+| `NEXT_PUBLIC_APP_URL` | Public URL of the web app (OAuth redirects) |
+| `FASTAPI_BASE_URL` | Where the ML backend runs (default `http://127.0.0.1:8000`) |
+| `ML_API_KEY` | Shared secret sent to the ML backend; must equal `ML_API_KEY` in `backend/.env`. Generate it like `JWT_SECRET`. |
+| `CAPACITOR_SERVER_URL` | URL the Android app loads; empty uses the bundled files |
+
+`backend/.env` holds the ML settings:
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `ML_API_KEY` | empty | Required `X-API-Key` on every endpoint except `/health`. **Set it whenever the ML server is reachable from the internet**; empty leaves it open (local development only, a warning is logged). |
+| `OCR_ENABLED` | `true` | `true` loads Florence-2 and reads number plates (~1 GB RAM, ~1.6 s per plate on CPU). `false` skips loading it: plates are still detected, just not read. |
+| `PARALLEL_PROCESSING` | `false` | `false`: one copy of each detection model, so requests for the same model run one at a time (least RAM). `true`: loads `PARALLEL_WORKERS` copies of each YOLO model so that many requests run at the same time. Florence OCR stays one shared copy either way. |
+| `PARALLEL_WORKERS` | `2` | Copies per model when parallel processing is on (each adds roughly 50–100 MB of RAM). |
+| `DEVICE` | `auto` | `auto`, `cpu` or `cuda`. |
+| `TRACKER` | `bytetrack.yaml` | Default tracker for traffic videos (`botsort.yaml` is the alternative). |
+| `MODEL_PATH` / `TRAFFIC_MODEL_PATH` | committed weights | Use other YOLO weights. |
+| `DEBUG` | `false` | `true` also serves the interactive API docs at `/docs` (keep it off in production). |
+
+`GET /health` reports `ocr_enabled`, `ocr_loaded` and `parallel_workers`, so you can confirm what is active. Both `.env` files are gitignored; only the `.env.example` files are committed.
+
+### 2. PostgreSQL
+
+Use an existing server, or run a portable one without an installer:
+
+* **Windows:** download the "binaries" zip from [EnterpriseDB](https://www.enterprisedb.com/download-postgresql-binaries), extract it (for example to `C:\pgsql`), then:
+  ```powershell
+  C:\pgsql\bin\initdb.exe -D C:\pgsql\data -U postgres -W -A scram-sha-256 -E UTF8
+  C:\pgsql\bin\pg_ctl.exe -D C:\pgsql\data -l C:\pgsql\server.log start
+  C:\pgsql\bin\createdb.exe -U postgres sadaksathi
+  ```
+* **Linux (Debian/Ubuntu):**
+  ```bash
+  sudo apt install postgresql
+  sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'choose-a-password';"
+  sudo -u postgres createdb sadaksathi
+  ```
+
+Put the password into `DATABASE_URL` in `.env`.
+
+### 3. Web app (Next.js)
+
+```bash
+npm install                    # also runs prisma generate
+npx prisma migrate deploy      # creates all tables
+node seed-authorities.js       # creates the municipal and traffic staff accounts
+npm run dev                    # http://localhost:3000
+```
+
+Staff log in on `/auth` with "Log in as: Municipal staff / Traffic police", using username `municipal_desk` or `traffic_desk` (or `municipal@sadaksathi.ai` / `traffic@sadaksathi.ai`) and the `AUTHORITY_SEED_PASSWORD` you set.
+
+> **Upgrading an existing database** that was created with `prisma db push`: it already has the tables from the `20261118000100_sync_schema` migration. Mark it as applied instead of running it: `npx prisma migrate resolve --applied 20261118000100_sync_schema`, then `npx prisma migrate deploy`.
+
+### 4. ML backend (FastAPI)
+
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # On Windows use: .\venv\Scripts\activate
-
-# Upgrade pip and install baseline dependencies
-pip install --upgrade pip
-pip install -r requirements.txt
-
-# Install pinned neural processing dependencies (avoids PyTorch 2.5+ CUDA dependency issues)
-pip install "numpy<2" "transformers<5" "sentence-transformers<4"
-pip install matplotlib ultralytics-thop starlette
 ```
-
-Next, place the pre-trained weights in the models directory:
-1.  Create the `backend/models` folder.
-2.  Place `best_municipal.pt` and `best_traffic.pt` inside the `backend/models/` folder.
-
-Start the uvicorn development server:
+Activate it with `source venv/bin/activate` on Linux, or `venv\Scripts\activate` on Windows. Then:
 ```bash
-python -m uvicorn main:app --reload --port 8000
+pip install -r requirements.txt     # CPU-only torch; versions are pinned to a working set
+python -m uvicorn main:app --port 8000
 ```
-Confirm the backend is up by calling `http://localhost:8000/health`.
+Check `http://localhost:8000/health`: `model_loaded`, `traffic_model_loaded` and `ocr_loaded` should be `true`. The first start downloads Florence-2 and the sentence-embedding model from Hugging Face (about 1 GB, once).
 
-### 2. Initialize Frontend Services (Next.js)
+The committed weights load by default: `backend/models/best_whole_model_nano.pt` (road hazards) and `backend/models/traffic_model_nano_worse.pt` (traffic). Override them with `MODEL_PATH` / `TRAFFIC_MODEL_PATH` in `backend/.env`.
 
-Navigate to the project root and install JavaScript packages:
-```bash
-cd ..
-npm install
-```
-
-Configure your local database and run migrations:
-```bash
-# Generate Prisma Client
-npx prisma generate
-
-# Apply migrations to your PostgreSQL instance
-npx prisma migrate dev
-
-# Seed baseline database entries (Optionally registers municipal authority roles)
-node seed-authorities.js
-```
-
-Start the Next.js development server:
-```bash
-npm run dev
-```
-Open `http://localhost:3000` to view the sadakSathi frontend.
-
-### 3. Run Automated System Tests
-
-Validate the AI and duplicate detection pipelines using the Python test suite:
-```bash
-cd backend
-
-# Run duplication test suite
-$env:PYTHONIOENCODING='utf-8'
-python tests/test_duplication_100.py
-
-# Run Florence-2 OCR pipeline validation
-python tests/test_florence_ocr.py
-```
+To try a model on one image without the servers: `python run_detection.py path/to/image.jpg`.
 
 ---
 
-## 📋 Environment Variables Template
+## 🍓 Deploy on a Raspberry Pi (HTTPS)
 
-<details>
-<summary><b>📂 Click to View Environment File Structure</b></summary>
+`docker-compose.yml` runs the whole system on a **Raspberry Pi 4 or 5 (64-bit Raspberry Pi OS, 4 GB+ RAM)** or any Linux server:
 
-### Root Application (`/.env`)
-```env
-# Database Settings (PostgreSQL Connection String)
-DATABASE_URL="postgresql://postgres:password@localhost:5432/sadaksathi?schema=public"
+| Container | What it does | Reachable from the network? |
+| :--- | :--- | :--- |
+| `caddy` | HTTPS front door: certificates, HTTP→HTTPS redirect, gzip/zstd, upload size limits | **Yes**: ports 80/443 only |
+| `web` | Next.js standalone server (~80 MB RAM) | No (private Docker network) |
+| `ml` | FastAPI + YOLO as NCNN models (fast on ARM), requires `ML_API_KEY` | No |
+| `db` | PostgreSQL 17, tuned for small machines | No |
+| `migrate` | Applies migrations and seeds staff accounts, then exits | No |
 
-# Frontend Authentication Keys
-JWT_SECRET="your-32-character-secret-key-for-jwt-tokens"
-NEXTAUTH_SECRET="another-random-string-for-session-encryption"
+1. Install Docker: `curl -fsSL https://get.docker.com | sh`, then `sudo usermod -aG docker $USER` and log in again.
+2. Copy the repo to the Pi, then `cp .env.example .env` and fill in `JWT_SECRET`, `ML_API_KEY`, `AUTHORITY_SEED_PASSWORD`, `POSTGRES_PASSWORD` and the **Deployment** block:
+   * **Home network:** `SITE_ADDRESS=raspberrypi.local` and `CADDY_TLS=internal`. Caddy runs its own certificate authority; install its root certificate (`docker compose exec caddy cat /data/caddy/pki/authorities/local/root.crt`) on your devices to remove the browser warning.
+   * **Public domain:** point the domain at your router, forward ports 80 and 443 to the Pi, then set `SITE_ADDRESS=your.domain` and `CADDY_TLS=you@example.com`. You get a real Let's Encrypt certificate, renewed automatically.
+3. Run `docker compose up -d --build`. The first build on a Pi takes 20–40 minutes; to save time, build on a PC with `docker buildx build --platform linux/arm64` and push.
+4. Open `https://<SITE_ADDRESS>`.
 
-# Google OAuth Keys (For Google Sign-In support)
-GOOGLE_CLIENT_ID="google-client-id-here"
-GOOGLE_CLIENT_SECRET="google-client-secret-here"
+**Tuned for the Pi:**
+* YOLO weights are exported to NCNN at image build time. NCNN is the format Ultralytics recommends for ARM CPUs.
+* Plate OCR is off by default (`OCR_ENABLED=false`). Florence-2 needs about 1 GB of RAM and takes several seconds per plate on ARM. Turn it on for a Pi 5 with 8 GB.
+* One model copy (`PARALLEL_PROCESSING=false`), 4 inference threads (`ML_THREADS`), small Postgres buffers, and a Node heap cap.
+* Fonts ship in the repo, so builds work offline.
+* Measured idle footprint in testing (OCR off): ~360 MB RAM for the whole stack.
 
-# API Target Endpoints
-NEXT_PUBLIC_APP_URL="http://localhost:3000"
-NEXT_PUBLIC_API_BASE_URL="http://localhost:8000"
-```
-
-### FastAPI Backend (`/backend/.env`)
-```env
-# FastAPI Settings
-APP_TITLE="SadakSathi ML Backend"
-APP_VERSION="0.2.0"
-DEBUG=true
-
-# Model Path Configurations
-MODEL_PATH="models/best_municipal.pt"
-TRAFFIC_MODEL_PATH="models/best_traffic.pt"
-DEVICE="auto" # "auto" | "cpu" | "cuda"
-
-# Duplicate Search Bounds
-LOCATION_THRESHOLD=0.10 # km (100 meters)
-TEXT_SIMILARITY_THRESHOLD=0.65
-
-# OCR Controller
-OCR_ENABLED=true
-```
-</details>
+**Why the channel is secure:** browsers only ever talk to Caddy over TLS (HSTS is sent). The web app, ML server and database share a private Docker network that isn't published to the LAN. The web app authenticates to the ML server with `ML_API_KEY`, and session cookies are `Secure`, `HttpOnly` and `SameSite=Lax`.
 
 ---
 
-## 🖼️ User Interface Previews
+## ✅ Testing
 
-### 1. Unified Real-Time Detector
-![Unified Detector Interface](https://via.placeholder.com/1200x600/1e293b/ffffff?text=SadakSathi+Unified+Real-Time+Detector+View)
-*The citizen-facing uploading terminal displaying live bounding box overlays, individual priority classifications, and confidence intervals.*
+| Command | What it checks |
+| :--- | :--- |
+| `npm test` | Unit tests (auth, JWT secret guard, signup role) |
+| `npx tsc --noEmit` | Type check |
+| `cd backend && pytest tests` | Backend API, duplicate detection, OCR (OCR/model tests skip when torch or test images are missing) |
+| `npm run test:e2e` | **End-to-end smoke test** against running servers (53 checks): signup and login, role checks, account lockout, sign-out of other sessions on password change, filing complaints, media URLs, duplicate flagging, simultaneous upvotes, chat, municipal desk (resolution photo required to complete), traffic desk, delete, and road/traffic detection through the web proxy (including stored violations and the ML API key). Needs PostgreSQL, the web app and the ML backend running. `E2E_SKIP_ML=1` skips the model checks; `WEB_URL` / `ML_URL` point it elsewhere. |
 
-### 2. Municipal Commander Dashboard
-![Municipal Commander View](https://via.placeholder.com/1200x600/1e293b/ffffff?text=Municipal+Commander+Dashboard+View)
-*The administrative portal showing geographic complaint distribution, interactive status toggles, and live chat features.*
-
-### 3. Traffic Violation Stream & Challan Aggregator
-![Traffic Dashboard View](https://via.placeholder.com/1200x600/1e293b/ffffff?text=Traffic+Violation+Stream+and+Challan+Aggregator)
-*The traffic officer interface showing ByteTrack streams, cropped number plate extractions from Florence-2 OCR, and automated fine invoices.*
+CI runs the unit, type and backend tests on both **Ubuntu and Windows**, plus the end-to-end test against a PostgreSQL service (ML checks skipped there).
 
 ---
 
-**SadakSathi** — Making cities safer, one road at a time. 🛣️✨
+## 🔒 Security notes
+
+* Roles come only from the database: signup always creates a citizen, and staff accounts come from `seed-authorities.js`. There are no hard-coded logins.
+* Every API call re-checks the session against the database (`src/lib/session.ts`), so a changed role or deleted account takes effect immediately, and **changing your password signs out every other session**.
+* Five wrong passwords in a row lock the account for 15 minutes (stored in the database, so it holds across server instances).
+* The ML backend only answers calls carrying the shared `ML_API_KEY`; the web app adds it server-side and it never reaches the browser.
+* The ML backend has no CORS (browsers never call it) and hides `/docs` and `/openapi.json` unless `DEBUG=true`. The Hugging Face models it downloads are pinned to exact commits, so a changed upstream repo can't run new code on the server.
+* State-changing API calls carrying another site's `Origin` header are refused (`src/proxy.ts`), on top of `SameSite=Lax` cookies.
+* Abuse limits: 20 reports per account per day, 10 AI scans per account per minute, 5 sign-ups per IP per hour. Authors can't upvote their own reports, and duplicates earn no leaderboard points. The per-minute and per-IP limits are kept in memory, which is exact for a single server such as the Pi. The IP comes from `X-Forwarded-For` as set by Caddy, so don't expose the Next.js port directly.
+* Login gives the same answer, in the same time, for unknown accounts, wrong passwords and Google-only accounts.
+* Last review followed the [Strix](https://github.com/usestrix/strix) methodology. Remaining known risk: the pinned `torch`/`transformers` versions carry advisories that apply only when loading untrusted model files (this app loads only its own pinned models). Upgrading them requires moving off torch 2.2.2.
+* Staff pages and APIs check the role on the server: municipal routes need `municipal`/`admin`, traffic routes `traffic`/`admin`, and chats are limited to the thread owner or the matching department.
+* Google sign-in uses a `state` check. Login redirects only follow same-site paths.
+* Every response sends HSTS, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` and a framing CSP (see `next.config.ts`).
+* Uploads are size-limited (evidence about 3 MB, avatars about 300 KB) and limited to JPEG/PNG/WebP/GIF images and MP4/WebM/MOV video (no SVG). Media is still stored as base64 in Postgres, but lists never carry it: they return `/api/complaints/<id>/media` URLs that the browser loads and caches per picture. Move media to object storage if uploads grow.
+
+---
+
+## 🎨 Design
+
+The interface follows a "highway sign" system: sign green `#00704A` for actions, hazard amber `#F5B700` for anything waiting on someone, signal red `#C8102E` for urgent or destructive actions, and asphalt `#1F2328` for text, all set in Overpass (descended from Highway Gothic, the road-sign typeface). Status colours are the same everywhere: Submitted is amber, Approved/On hold neutral, Rejected red, Completed green. Motion is limited to a few moments (the landing sign rising, the detector's scan pass, the moving hazard stripe on high-priority results) and is switched off by the operating system's reduce-motion setting.
+
+---
+
+**SadakSathi** — Making cities safer, one road at a time.

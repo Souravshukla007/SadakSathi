@@ -36,6 +36,11 @@ CLASS_MIN_PRIORITY: dict[str, str] = {
     "broken_sign":         "Medium",  # Damaged signage is always at least medium
     "broken_street_light": "Medium",  # Dark road is always at least medium
     "overflow_garbage":    "Medium",  # Overflow is always at least medium
+    # Class names emitted by the committed YOLO26 road models
+    "garbage_overflow":    "Medium",
+    "manhole_broken":      "High",
+    "manhole_lose":        "High",
+    "manhole_uncovered":   "High",
 }
 
 # Global model instance
@@ -77,7 +82,9 @@ def load_model(model_path: str, device: str = "auto"):
         logger.info(f"CUDA available: {torch.cuda.is_available()}")
         logger.info(f"Model will use device: {device}")
 
-        model.to(device)
+        # NCNN/ONNX exports (fast on Raspberry Pi) run on CPU and have no .to(); only PyTorch weights move.
+        if str(model_path).endswith(".pt"):
+            model.to(device)
         _global_model = model
         logger.info("YOLO model loaded successfully.")
         return model
@@ -196,7 +203,7 @@ def determine_road_priority(
             for j, d2 in enumerate(detections):
                 if j not in processed:
                     dist = np.linalg.norm(
-                        np.array(d1["position"]) - np.array(d2["position"])
+                        np.array(detections[curr]["position"]) - np.array(d2["position"])
                     )
                     if dist < proximity_threshold:
                         processed.add(j)

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import toast from 'react-hot-toast';
+import { ThumbsUp } from 'lucide-react';
 
 interface VoteButtonProps {
     complaintId: string;
@@ -13,6 +14,7 @@ export default function VoteButton({ complaintId, initialCount, hasVoted: initia
     const [count, setCount] = useState(initialCount);
     const [hasVoted, setHasVoted] = useState(initialHasVoted);
     const [loading, setLoading] = useState(false);
+    const [pops, setPops] = useState(0); // bumps on each vote so the icon replays its pop
 
     const handleVote = async () => {
         if (hasVoted || loading) return;
@@ -20,6 +22,7 @@ export default function VoteButton({ complaintId, initialCount, hasVoted: initia
         // Optimistic update
         setCount((prev) => prev + 1);
         setHasVoted(true);
+        setPops((n) => n + 1);
         try {
             const res = await fetch('/api/complaints/vote', {
                 method: 'POST',
@@ -31,15 +34,15 @@ export default function VoteButton({ complaintId, initialCount, hasVoted: initia
                 // Rollback
                 setCount((prev) => prev - 1);
                 setHasVoted(false);
-                toast.error(data.message || 'Failed to cast vote.');
+                toast.error(data.message || 'Upvote not saved. Try again.');
             } else {
                 setCount(data.upvoteCount);
-                toast.success('Vote cast!');
+                toast.success('Upvoted');
             }
         } catch {
             setCount((prev) => prev - 1);
             setHasVoted(false);
-            toast.error('Network error. Please try again.');
+            toast.error('Upvote not saved: no connection. Check your network and try again.');
         } finally {
             setLoading(false);
         }
@@ -47,19 +50,20 @@ export default function VoteButton({ complaintId, initialCount, hasVoted: initia
 
     return (
         <button
+            type="button"
             onClick={handleVote}
             disabled={hasVoted || loading}
-            title={hasVoted ? 'You have already voted' : 'Upvote this complaint'}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            aria-pressed={hasVoted}
+            aria-label={hasVoted ? `Upvoted, ${count} upvotes` : `Upvote this report, ${count} upvotes`}
+            title={hasVoted ? 'You upvoted this report' : 'Upvote this report'}
+            className={`inline-flex items-center gap-1.5 min-h-11 px-3 rounded-lg border text-sm font-bold transition-[color,background-color,border-color,transform] duration-200 active:scale-95 ${
                 hasVoted
-                    ? 'bg-green-100 text-green-700 cursor-not-allowed'
-                    : 'bg-green-600 hover:bg-green-700 text-white'
+                    ? 'border-sign-green bg-sign-green/10 text-sign-green cursor-default'
+                    : 'border-border-light text-text-secondary hover:border-sign-green hover:text-sign-green'
             }`}
         >
-            <svg className="w-3.5 h-3.5" fill={hasVoted ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
-            </svg>
-            {count}
+            <ThumbsUp key={pops} className={`w-4 h-4 ${pops ? 'animate-pop' : ''}`} fill={hasVoted ? 'currentColor' : 'none'} aria-hidden="true" />
+            <span key={`n${pops}`} className={`tabular-nums ${pops ? 'animate-pop' : ''}`}>{count}</span>
         </button>
     );
 }

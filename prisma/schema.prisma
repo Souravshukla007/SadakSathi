@@ -13,6 +13,9 @@ model User {
   email           String?        @unique
   passwordHash    String?
   role            String         @default("user")
+  tokenVersion    Int            @default(0) // bump to log out every session of this user
+  failedLogins    Int            @default(0)
+  lockedUntil     DateTime?
   phone           String?
   city            String?
   state           String?
@@ -67,6 +70,8 @@ model Upvote {
   createdAt   DateTime  @default(now())
   complaint   Complaint @relation(fields: [complaintId], references: [id])
   user        User      @relation(fields: [userId], references: [id])
+
+  @@unique([complaintId, userId])
 }
 
 model Feedback {
@@ -149,6 +154,7 @@ model TrafficViolation {
   frameId    String
   vehicleId  String
   location   String?
+  plateText  String?          // number plate read by OCR in the same scan, if any
   status     String           @default("detected")
   timestamp  DateTime         @default(now())
   vehicle    VehicleDetection @relation(fields: [vehicleId], references: [id])

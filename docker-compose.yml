@@ -1,0 +1,89 @@
+# Production stack for a Raspberry Pi 4/5 (64-bit OS, 4 GB+ RAM) or any Linux server.
+#   cp .env.example .env   # fill in the "Deployment" section
+#   docker compose up -d --build
+# Only Caddy publishes ports (80/443). The web app, ML server and database are reachable only on
+# Docker's private network, and the ML server additionally requires ML_API_KEY.
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: sadaksathi
+    # Small-machine tuning: modest buffers and connection count.
+    command: postgres -c shared_buffers=128MB -c max_connections=40 -c effective_cache_size=512MB
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sadaksathi"]
+      interval: 5s
+      retries: 20
+
+  ml:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      ML_API_KEY: ${ML_API_KEY:?set ML_API_KEY in .env}
+      DEVICE: cpu
+      MODEL_PATH: models/best_whole_model_nano_ncnn_model
+      TRAFFIC_MODEL_PATH: models/traffic_model_nano_worse_ncnn_model
+      # Pi defaults: plate OCR off (Florence-2 needs ~1 GB RAM and takes seconds per plate on ARM),
+      # one model copy. Raise these on a Pi 5 with 8 GB.
+      OCR_ENABLED: ${OCR_ENABLED:-false}
+      PARALLEL_PROCESSING: ${PARALLEL_PROCESSING:-false}
+      PARALLEL_WORKERS: ${PARALLEL_WORKERS:-2}
+      OMP_NUM_THREADS: ${ML_THREADS:-4}
+      HF_HOME: /home/app/.cache/huggingface
+    volumes: [hf-cache:/home/app/.cache/huggingface]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      start_period: 180s
+      retries: 10
+
+  migrate:
+    # One-shot: apply migrations and (re)seed the staff accounts, then exit.
+    build: { context: ., target: migrate }
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/sadaksathi?schema=public
+      AUTHORITY_SEED_PASSWORD: ${AUTHORITY_SEED_PASSWORD:?set AUTHORITY_SEED_PASSWORD in .env}
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  web:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_APP_URL: https://${SITE_ADDRESS}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/sadaksathi?schema=public
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      ML_API_KEY: ${ML_API_KEY}
+      FASTAPI_BASE_URL: http://ml:8000
+      NEXT_PUBLIC_APP_URL: https://${SITE_ADDRESS}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      NODE_OPTIONS: --max-old-space-size=384
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env}
+      CADDY_TLS: ${CADDY_TLS:-internal}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [web]
+
+volumes:
+  pgdata:
+  hf-cache:
+  caddy-data:
+  caddy-config:

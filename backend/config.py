@@ -16,36 +16,37 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.2.0"
     DEBUG: bool = False
 
-    # LOCAL: localhost. PRODUCTION: your Vercel URL is always allowed.
-    # Add any additional origins (staging, preview) via EXTRA_CORS_ORIGINS env var.
-    CORS_ORIGINS: list[str] = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://sadak-sathi-chi.vercel.app",
-    ]
-    EXTRA_CORS_ORIGINS: list[str] = []  # set in env for staging/preview URLs
+    # Shared secret the web app sends as X-API-Key. Empty disables the check (local dev only);
+    # always set it when this server is reachable from the internet.
+    ML_API_KEY: str = ""
+
+    # --- Parallel processing ---
+    # false: one copy of each model, requests for the same model run one at a time (least RAM).
+    # true:  PARALLEL_WORKERS copies of each YOLO model, so that many requests run at once
+    #        (each copy adds ~50-100 MB of RAM; Florence OCR stays a single shared copy).
+    PARALLEL_PROCESSING: bool = False
+    PARALLEL_WORKERS: int = 2
+
 
     # --- Road Hazard Model ---
-    # Detects: pothole, garbage, overflow_garbage, manhole_cover,
-    #          broken_sign, broken_street_light, fallen_tree
-    # Updated to best_municipal.pt — higher accuracy, improved garbage detection
-    MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "best_municipal.pt")
-    CONF_THRESHOLD: float = 0.20  # Raised slightly — new model is more precise
+    # Committed YOLO26n road model. Classes: garbage, garbage_overflow, manhole_broken,
+    #   manhole_lose, manhole_uncovered, pothole, fallen_tree (mAP50 0.813).
+    # Override with MODEL_PATH env (e.g. models/best_municipal.pt if you have it locally).
+    MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "best_whole_model_nano.pt")
     DEVICE: str = "auto"           # "auto" | "cpu" | "cuda"
 
     # --- Traffic Violation Model ---
-    # Detects: helmet, no_helmet, number_plate, triple_riding, wrong_side_moving
-    # Updated to best_traffic.pt — improved accuracy, proper number plate detection
-    TRAFFIC_MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "best_traffic.pt")
+    # Committed YOLO26n traffic model. Classes: Plate, WithHelmet, WithoutHelmet, TripleRiding.
+    # Override with TRAFFIC_MODEL_PATH env (e.g. models/best_traffic.pt if you have it locally).
+    TRAFFIC_MODEL_PATH: str = str(Path(__file__).resolve().parent / "models" / "traffic_model_nano_worse.pt")
 
     # --- Object Tracking (Traffic Video) ---
     # "bytetrack.yaml" or "botsort.yaml" — Ultralytics built-in trackers
     TRACKER: str = "bytetrack.yaml"
 
     # --- OCR (Number Plate Reading) ---
-    # Enabled: best_traffic.pt has dedicated number_plate class with proper bounding boxes
+    # false skips loading Florence-2 (~1 GB RAM, slow on CPU); plates are then detected but not read.
     OCR_ENABLED: bool = True
-    OCR_LANGUAGES: list[str] = ["en"]  # EasyOCR language codes
 
     # --- Duplication Detection ---
     LOCATION_THRESHOLD: float = 0.1   # km — max distance to consider location similar
@@ -54,9 +55,8 @@ class Settings(BaseSettings):
 
     # --- Uploads ---
     UPLOAD_DIR: str = "uploads"
-    MAX_FILE_SIZE_MB: int = 50
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = {"env_file": Path(__file__).resolve().parent / ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 @lru_cache

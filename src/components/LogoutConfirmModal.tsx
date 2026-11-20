@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
+import { LogOut } from 'lucide-react';
 
 interface LogoutConfirmModalProps {
     isOpen: boolean;
@@ -9,32 +10,47 @@ interface LogoutConfirmModalProps {
 }
 
 export default function LogoutConfirmModal({ isOpen, onClose, onConfirm }: LogoutConfirmModalProps) {
+    const cancelRef = useRef<HTMLButtonElement>(null);
+
+    // Focus the safe choice and let Escape back out, like every other dialog on the site.
+    useEffect(() => {
+        if (!isOpen) return;
+        cancelRef.current?.focus();
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [isOpen, onClose]);
+
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl transform transition-all">
-                <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
+        <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-asphalt/60 p-4 overscroll-contain"
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+        >
+            <div role="dialog" aria-modal="true" aria-labelledby="logout-title" aria-describedby="logout-desc" className="animate-pop bg-surface rounded-xl p-6 sm:p-8 max-w-sm w-full shadow-medium border border-border-light">
+                <div className="w-12 h-12 bg-signal-red text-white rounded-lg flex items-center justify-center mb-5 shadow-[inset_0_0_0_2px_var(--color-signal-red),inset_0_0_0_3.5px_#fff]">
+                    <LogOut className="w-6 h-6" aria-hidden="true" />
                 </div>
-                <h3 className="text-xl font-heading font-bold text-center mb-2">Ready to Leave?</h3>
-                <p className="text-text-secondary text-sm text-center mb-8">
-                    Are you sure you want to log out of your account? You will need to sign back in to access your dashboard.
+                <h3 id="logout-title" className="text-xl font-heading font-normal tracking-tighter mb-2">Log out?</h3>
+                <p id="logout-desc" className="text-text-secondary mb-8">
+                    This logs you out on all your devices. You&apos;ll need to log in again to see your reports.
                 </p>
                 <div className="flex gap-3">
                     <button
+                        ref={cancelRef}
+                        type="button"
                         onClick={onClose}
-                        className="flex-1 py-3 px-4 bg-neutral-surface text-text-primary font-bold rounded-xl hover:bg-neutral-surface/80 transition-colors"
+                        className="flex-1 min-h-12 py-3 px-4 bg-surface border border-border-light text-text-primary font-bold rounded-lg hover:bg-neutral-surface hover:border-border-dark transition-colors"
                     >
                         Cancel
                     </button>
                     <button
+                        type="button"
                         onClick={onConfirm}
-                        className="flex-1 py-3 px-4 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors shadow-soft"
+                        className="flex-1 min-h-12 py-3 px-4 bg-signal-red text-white font-bold rounded-lg hover:bg-signal-red/90 transition-colors"
                     >
-                        Sign Out
+                        Log out
                     </button>
                 </div>
             </div>

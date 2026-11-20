@@ -5,12 +5,12 @@ import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import LogoutConfirmModal from "@/components/LogoutConfirmModal";
-import {
-  getDetectionHistory,
-  StoredDetection,
-  relativeTime,
-} from "@/lib/mlApi";
+import StaffNav from "@/components/traffic/StaffNav";
+import StatStrip from "@/components/traffic/StatStrip";
+import StatusBadge from "@/components/dashboard/StatusBadge";
+import Reveal from "@/components/Reveal";
+import { BarList, ColumnChart, complaintTone, DeskHeader, DonutChart, Panel, RowStripe } from "@/components/traffic/DeskUI";
+import { CalendarDays, ChartPie, CircleCheck, ClipboardList, Clock, ImageOff, Landmark, Layers, LoaderCircle, TrafficCone, Upload } from "lucide-react";
 
 // ── Complaint type from API ────────────────────────────────────────────────────
 interface Complaint {
@@ -25,6 +25,7 @@ interface Complaint {
   createdAt: string;
   upvoteCount: number;
   submittedBy: string;
+  isDuplicate: boolean;
 }
 
 // ── Derived stats from complaints ─────────────────────────────────────────────
@@ -34,7 +35,11 @@ interface DashboardStats {
   potholeComplaints: number;
   pendingAction: number;
   resolutionRate: string;
-  barData: number[]; // last 7 days counts
+  barData: number[]; // last 7 days, as % of the busiest day
+  barCounts: number[]; // last 7 days, raw counts
+  inProgress: number;
+  resolved: number;
+  byType: { label: string; value: number }[];
   pendingPct: number;
   inProgressPct: number;
   resolvedPct: number;
@@ -45,7 +50,7 @@ const getLast7DaysLabels = () => {
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    labels.push(d.toLocaleDateString("en-IN", { weekday: 'short' }).toUpperCase());
+    labels.push(d.toLocaleDateString("en-IN", { weekday: 'short' }));
   }
   return labels;
 };
@@ -61,8 +66,12 @@ function computeComplaintStats(complaints: Complaint[]): DashboardStats {
   const last7DaysCounts = [0, 0, 0, 0, 0, 0, 0];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const typeCounts: Record<string, number> = {};
 
   for (const c of complaints) {
+    const type = c.issueType || "Unknown";
+    typeCounts[type] = (typeCounts[type] || 0) + 1;
+
     if (c.issueType.toLowerCase().includes("pothole")) {
       potholeComplaints++;
     }
@@ -99,35 +108,25 @@ function computeComplaintStats(complaints: Complaint[]): DashboardStats {
     pendingAction,
     resolutionRate,
     barData,
+    barCounts: last7DaysCounts,
+    inProgress,
+    resolved,
+    byType: Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([label, value]) => ({ label, value })),
     pendingPct: totalStatus > 0 ? Math.round((pendingAction / totalStatus) * 100) : 0,
     inProgressPct: totalStatus > 0 ? Math.round((inProgress / totalStatus) * 100) : 0,
     resolvedPct: totalStatus > 0 ? Math.round((resolved / totalStatus) * 100) : 0,
   };
 }
 
-function statusStyle(status: string) {
-  switch (status) {
-    case "Submitted":  return "bg-yellow-100 text-yellow-700";
-    case "Approved":   return "bg-blue-100 text-blue-700";
-    case "OnHold":     return "bg-orange-100 text-orange-700";
-    case "Rejected":   return "bg-red-100 text-red-700";
-    case "Completed":
-    case "ResolvedReviewed": return "bg-green-100 text-green-700";
-    default:           return "bg-gray-100 text-gray-600";
-  }
-}
-function statusLabel(s: string) { return s === "ResolvedReviewed" ? "Resolved" : s; }
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function UserDashboardPage() {
   const router = useRouter();
-  const [history, setHistory]   = useState<StoredDetection[]>([]);
   const [stats, setStats]       = useState<DashboardStats | null>(null);
   const [loaded, setLoaded]     = useState(false);
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [complaintsLoading, setComplaintsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     // Auth check
@@ -136,7 +135,7 @@ export default function UserDashboardPage() {
         const res = await fetch("/api/auth/me", { cache: "no-store" });
         if (!res.ok) { router.push("/auth"); return; }
         const data = await res.json();
-        if (data.user?.role !== "municipal" && data.user?.role !== "user") {
+        if (data.user?.role !== "municipal" && data.user?.role !== "admin") {
           router.push("/auth");
         }
       } catch {
@@ -145,302 +144,173 @@ export default function UserDashboardPage() {
     };
     checkAuth();
 
-    // Load road-engine detection history from sessionStorage
-    const h = getDetectionHistory();
-    setHistory(h);
-
     // Fetch submitted complaints from DB
     const fetchComplaints = async () => {
       try {
-        const res = await fetch("/api/complaints/feed?sort=newest");
+        const res = await fetch("/api/municipal/complaints"); // the staff list: every report, not the public feed's first 50
         if (res.ok) {
           const data = await res.json();
-          setComplaints(data);
-          setStats(computeComplaintStats(data));
+          // Duplicates point at an original that is already counted.
+          const originals = (data as Complaint[]).filter((c) => !c.isDuplicate);
+          setComplaints(originals);
+          setStats(computeComplaintStats(originals));
+        } else {
+          setLoadError(true);
         }
-      } catch { /* noop */ } finally {
+      } catch { setLoadError(true); } finally {
         setComplaintsLoading(false);
         setLoaded(true);
       }
     };
     fetchComplaints();
-
-    // Scroll animations
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("animate-on-scroll-visible");
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      { threshold: 0.1 }
-    );
-    document.querySelectorAll("[data-animation-on-scroll]").forEach((el) => {
-      el.classList.add("animate-on-scroll-hidden");
-      observer.observe(el);
-    });
-    return () => observer.disconnect();
   }, [router]);
 
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
-  };
-
-  const triggerLogout = () => {
-    setShowLogoutConfirm(true);
-  };
-
   const s = stats;
+
+  const th = "px-4 py-3 whitespace-nowrap";
 
   return (
     <>
       <AppHeader dashboardMode={true} />
-      <LogoutConfirmModal 
-        isOpen={showLogoutConfirm} 
-        onClose={() => setShowLogoutConfirm(false)} 
-        onConfirm={handleLogout} 
-      />
-      <main className="flex-grow pt-16">
-        <div className="flex min-h-screen bg-neutral-surface">
+      <main id="main-content" className="flex-grow pt-16 bg-neutral-surface lg:pl-64">
+        <StaffNav desk="municipal" />
+        <div className="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl">
 
-          {/* Sidebar */}
-          <aside className="w-64 bg-text-primary text-white hidden lg:flex flex-col fixed inset-y-0 left-0 z-[60]">
-            <div className="p-6 border-b border-white/10">
-              <div className="text-xl font-heading font-bold flex items-center gap-2">
-                <span className="text-2xl">🛣️</span> SadakSathi
-              </div>
+            <DeskHeader
+              icon={Landmark}
+              title="Municipal dashboard"
+              description={loaded && s ? `${s.pendingAction} of ${s.totalComplaints} road hazard reports are waiting for action.` : "Road hazard reports from citizens, and how far each has got."}
+            >
+              <Link href="/upload" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-text-primary px-4 text-sm font-bold text-neutral-background shadow-soft transition-colors hover:opacity-90">
+                <Upload className="h-4 w-4" aria-hidden="true" />
+                Run detection
+              </Link>
+            </DeskHeader>
+
+            {loadError && (
+              <p role="alert" className="mb-6 rounded-lg border border-signal-red/40 bg-signal-red/5 px-4 py-3 text-sm text-signal-red">
+                Couldn&apos;t load complaints, so the figures below are not current. Refresh the page; if it keeps happening, check that the database is running.
+              </p>
+            )}
+
+            <div className="mb-6">
+              <StatStrip loading={!loaded} stats={[
+                { label: "Total complaints", value: s?.totalComplaints ?? 0, note: "From all citizens", icon: ClipboardList, tone: "neutral" },
+                { label: "Potholes reported", value: s?.potholeComplaints ?? 0, note: "Of all complaints", icon: TrafficCone, tone: "red" },
+                { label: "Waiting for action", value: s?.pendingAction ?? 0, note: "Submitted or on hold", icon: Clock, tone: "amber" },
+                { label: "Resolution rate", value: s?.resolutionRate ?? "0%", note: "Completed or resolved", icon: CircleCheck, tone: "green" },
+              ]} />
             </div>
-            <nav className="flex-grow p-4 space-y-1">
-              <Link href="/Municipal" className="flex items-center gap-3 px-4 py-3 bg-brand-primary text-text-primary font-bold rounded-lg">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-                Dashboard
-              </Link>
-              <Link href="/Municipal/complaints" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
-                Manage Complaints
-              </Link>
-              <Link href="/upload" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                Run Detection
-              </Link>
-              <Link href="/results?engine=road" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                Last Report
-              </Link>
 
-              <Link href="/Municipal/chat" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-                Chats
-              </Link>
-              <Link href="/Municipal/insights" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                Insights
-              </Link>
-            </nav>
-            <div className="p-4 border-t border-white/10">
-              <button 
-                onClick={triggerLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all"
-              >
-                <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center text-text-primary font-bold">M</div>
-                <div className="min-w-0 text-left">
-                  <div className="text-xs font-bold truncate">Sign Out</div>
-                  <div className="text-[10px] opacity-60 truncate">Municipal Desk</div>
-                </div>
-              </button>
+            <div className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+              <Reveal className="md:col-span-2 xl:col-span-1">
+                <Panel title="New complaints, last 7 days" icon={CalendarDays} className="h-full">
+                  {(!s || s.totalComplaints === 0) && (
+                    <p className="mb-3 text-sm text-text-secondary">No complaints yet. <Link href="/complaints" className="font-semibold text-sign-green hover:underline">Open the community feed</Link></p>
+                  )}
+                  <ColumnChart
+                    values={s?.barCounts ?? Array(7).fill(0)}
+                    labels={getLast7DaysLabels()}
+                    summary={`New complaints per day, last 7 days: ${getLast7DaysLabels().map((d, i) => `${d} ${s?.barCounts[i] ?? 0}`).join(", ")}`}
+                  />
+                </Panel>
+              </Reveal>
+
+              <Reveal delay={70}>
+                <Panel title="Complaint status" icon={ChartPie} tone="amber" className="h-full">
+                  <DonutChart
+                    centerValue={s?.pendingAction ?? 0}
+                    centerLabel="waiting"
+                    segments={[
+                      { label: "Waiting (submitted, on hold)", value: s?.pendingAction ?? 0, tone: "amber" },
+                      { label: "Approved, in progress", value: s?.inProgress ?? 0, tone: "neutral" },
+                      { label: "Resolved", value: s?.resolved ?? 0, tone: "green" },
+                    ]}
+                  />
+                </Panel>
+              </Reveal>
+
+              <Reveal delay={140}>
+                <Panel title="Most reported hazards" icon={Layers} tone="red" className="h-full">
+                  {s && s.byType.length > 0 ? (
+                    <BarList items={s.byType} tone="red" />
+                  ) : (
+                    <p className="py-8 text-center text-sm text-text-secondary">Counts by hazard type appear once citizens start reporting.</p>
+                  )}
+                </Panel>
+              </Reveal>
             </div>
-          </aside>
 
-          {/* Main Content */}
-          <div className="flex-grow lg:ml-64 p-8">
-            <div className="max-w-7xl mx-auto">
+            {/* Recent complaints */}
+            <Reveal>
+            <Panel
+              title="Recent complaints"
+              description="Latest 10 road hazard reports. The edge colour follows the status."
+              icon={ClipboardList}
+              bodyClassName=""
+              action={<Link href="/Municipal/complaints" className="inline-flex min-h-11 items-center text-sm font-semibold text-sign-green hover:underline">Manage complaints</Link>}
+            >
 
-              {/* Top Bar */}
-              <div className="flex justify-between items-center mb-10">
-                <h1 className="text-3xl font-heading font-normal tracking-tight">Municipal Dashboard</h1>
-                <div className="flex items-center gap-4">
-                  <Link href="/upload" className="px-4 py-2 bg-brand-primary text-text-primary text-sm font-bold rounded-lg hover:scale-[1.02] transition-transform">
-                    + New Analysis
-                  </Link>
-                  <div className="h-8 w-px bg-gray-200" />
-                  <span className="text-sm font-bold text-text-primary">SADAKSATHI.AI</span>
+              {complaintsLoading ? (
+                <div className="flex items-center justify-center gap-2 px-6 py-10 text-sm text-text-secondary">
+                  <LoaderCircle className="h-5 w-5 animate-spin text-sign-green" aria-hidden="true" />
+                  Loading complaints…
                 </div>
-              </div>
-
-              {/* Stats Cards */}
-              {!loaded ? (
-                /* Skeleton */
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-                  {[...Array(4)].map((_, i) => (
-                    <div key={i} className="bg-white p-6 rounded-2xl shadow-soft border border-border-light animate-pulse">
-                      <div className="h-3 w-24 bg-gray-200 rounded mb-4" />
-                      <div className="h-8 w-16 bg-gray-200 rounded mb-2" />
-                      <div className="h-3 w-32 bg-gray-200 rounded" />
-                    </div>
-                  ))}
+              ) : complaints.length === 0 ? (
+                <div className="px-6 py-14 text-center">
+                  <p className="font-semibold text-text-primary">No complaints yet</p>
+                  <p className="mt-1 text-sm text-text-secondary">New citizen reports land here as soon as they are submitted.</p>
+                  <Link href="/complaints" className="mt-3 inline-block text-sm font-semibold text-sign-green hover:underline">Open the community feed</Link>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-                  <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">Total Complaints</div>
-                    <div className="text-3xl font-bold mb-1">{s?.totalComplaints ?? 0}</div>
-                    <div className="text-xs text-text-secondary">From all citizens</div>
-                  </div>
-                  <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">Potholes Reported</div>
-                    <div className="text-3xl font-bold mb-1">{s?.potholeComplaints ?? 0}</div>
-                    <div className="text-xs text-text-secondary">Major hazard type</div>
-                  </div>
-                  <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">Pending Action</div>
-                    <div className="text-3xl font-bold mb-1 text-red-500">{s?.pendingAction ?? 0}</div>
-                    <div className="text-xs text-text-secondary">Requires review/action</div>
-                  </div>
-                  <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                    <div className="text-xs font-mono font-bold text-text-secondary uppercase mb-2">Resolution Rate</div>
-                    <div className="text-3xl font-bold mb-1">{s?.resolutionRate ?? "0%"}</div>
-                    <div className="text-xs text-brand-primary font-bold">Total resolved</div>
-                  </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] text-left">
+                    <thead className="border-b border-border-light bg-neutral-surface">
+                      <tr className="text-sm font-semibold text-text-secondary">
+                        <th scope="col" className={`${th} sm:pl-6`}>Issue</th>
+                        <th scope="col" className={th}>Location</th>
+                        <th scope="col" className={th}>Reported by</th>
+                        <th scope="col" className={th}>Status</th>
+                        <th scope="col" className={`${th} text-right`}>Upvotes</th>
+                        <th scope="col" className={`${th} sm:pr-6`}>Submitted</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border-light">
+                      {complaints.slice(0, 10).map((c) => (
+                        <tr key={c.id} className="text-sm transition-colors hover:bg-sign-green/5">
+                          <td className="relative px-4 py-2.5 sm:pl-6">
+                            <RowStripe tone={complaintTone(c.status)} />
+                            <Link href={`/Municipal/complaints?highlight=${c.id}`} className="flex items-center gap-3 font-semibold text-text-primary hover:text-sign-green">
+                              <span className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-md bg-neutral-surface">
+                                {c.evidenceUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={c.evidenceUrl} alt="" width={40} height={40} loading="lazy" className="h-full w-full object-cover" />
+                                ) : (
+                                  <ImageOff className="absolute inset-0 m-auto h-4 w-4 text-text-secondary" aria-hidden="true" />
+                                )}
+                              </span>
+                              {c.issueType}
+                            </Link>
+                          </td>
+                          <td className="max-w-[220px] truncate px-4 py-3 text-text-secondary">
+                            {c.street ? `${c.street}, ` : ""}{c.city}, {c.state}
+                          </td>
+                          <td className="px-4 py-3 text-text-secondary">{c.submittedBy}</td>
+                          <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
+                          <td className="px-4 py-3 text-right font-semibold tabular-nums">{c.upvoteCount}</td>
+                          <td className="whitespace-nowrap px-4 py-3 tabular-nums text-text-secondary sm:pr-6">
+                            {new Date(c.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
+            </Panel>
+            </Reveal>
 
-              {/* Charts */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
-
-                {/* Bar Chart — last 7 days */}
-                <div className="lg:col-span-2 bg-white p-8 rounded-2xl shadow-soft border border-border-light">
-                  <h3 className="font-heading font-bold mb-2">Complaints Over Time — Last 7 Days</h3>
-                  {(!s || s.totalComplaints === 0) && (
-                    <p className="text-sm text-text-secondary mb-6">No complaints submitted yet. <Link href="/complaints" className="text-brand-primary font-bold hover:underline">View community feed →</Link></p>
-                  )}
-                  <div className="h-64 flex items-end justify-between gap-2 mt-4">
-                    {(s?.barData ?? Array(7).fill(0)).map((pct, i) => (
-                      <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                        <div
-                          className="w-full rounded-t-sm transition-all duration-700"
-                          style={{
-                            height: `${Math.max(pct, 4)}%`,
-                            backgroundColor: pct === 0 ? "#e5e7eb" : `hsl(142, 71%, ${40 + (100 - pct) * 0.2}%)`,
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex justify-between mt-4 text-[10px] font-mono text-text-secondary">
-                    {getLast7DaysLabels().map((d, i) => <span key={i}>{d}</span>)}
-                  </div>
-                </div>
-
-                {/* Status Ring */}
-                <div className="bg-white p-8 rounded-2xl shadow-soft border border-border-light">
-                  <h3 className="font-heading font-bold mb-8">Complaint Status</h3>
-                  <div className="relative aspect-square flex items-center justify-center">
-                    <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f3f4f6" strokeWidth="3.5" />
-                      {s && s.pendingPct > 0 && (
-                        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#ef4444" strokeWidth="3.5"
-                          strokeDasharray={`${s.pendingPct} ${100 - s.pendingPct}`} strokeDashoffset="0" strokeLinecap="round" />
-                      )}
-                      {s && s.inProgressPct > 0 && (
-                        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#facc15" strokeWidth="3.5"
-                          strokeDasharray={`${s.inProgressPct} ${100 - s.inProgressPct}`}
-                          strokeDashoffset={`${-(s.pendingPct)}`} strokeLinecap="round" />
-                      )}
-                      {s && s.resolvedPct > 0 && (
-                        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#4ade80" strokeWidth="3.5"
-                          strokeDasharray={`${s.resolvedPct} ${100 - s.resolvedPct}`}
-                          strokeDashoffset={`${-(s.pendingPct + s.inProgressPct)}`} strokeLinecap="round" />
-                      )}
-                    </svg>
-                    <div className="absolute text-center">
-                      <div className="text-2xl font-bold">{s?.pendingAction ?? 0}</div>
-                      <div className="text-[10px] uppercase font-mono text-text-secondary">Pending Action</div>
-                    </div>
-                  </div>
-                  <div className="mt-6 space-y-3">
-                    {[
-                      { label: "Pending",   color: "bg-red-500",    pct: s?.pendingPct   ?? 0 },
-                      { label: "In Progress", color: "bg-yellow-400",  pct: s?.inProgressPct ?? 0 },
-                      { label: "Resolved",    color: "bg-green-400",   pct: s?.resolvedPct    ?? 0 },
-                    ].map(({ label, color, pct }) => (
-                      <div key={label} className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2"><div className={`w-3 h-3 ${color} rounded-full`} />{label}</div>
-                        <span className="font-bold">{pct}%</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Recent Submitted Complaints — Road Hazard */}
-              <div className="bg-white rounded-2xl shadow-soft border border-border-light overflow-hidden">
-                <div className="px-8 py-6 border-b border-border-light flex justify-between items-center">
-                  <div>
-                    <h3 className="font-heading font-bold">Recent Submitted Complaints</h3>
-                    <p className="text-xs text-text-secondary mt-0.5">Road Hazard Reports — from citizen submissions</p>
-                  </div>
-                  <Link href="/complaints" className="text-sm font-bold text-brand-primary hover:underline">View All →</Link>
-                </div>
-
-                {complaintsLoading ? (
-                  <div className="px-8 py-10 flex justify-center">
-                    <div className="animate-spin w-6 h-6 border-3 border-brand-primary border-t-transparent rounded-full" />
-                  </div>
-                ) : complaints.length === 0 ? (
-                  <div className="px-8 py-16 text-center text-text-secondary">
-                    <p className="mb-4">No complaints submitted yet.</p>
-                    <Link href="/complaints" className="text-brand-primary font-bold hover:underline">View Complaints Page →</Link>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="text-[10px] font-mono text-text-secondary uppercase bg-neutral-surface border-b border-border-light">
-                          <th className="px-6 py-4">Issue Type</th>
-                          <th className="px-6 py-4">Location</th>
-                          <th className="px-6 py-4">Reported By</th>
-                          <th className="px-6 py-4">Engine</th>
-                          <th className="px-6 py-4">Status</th>
-                          <th className="px-6 py-4">Upvotes</th>
-                          <th className="px-6 py-4">Submitted</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border-light">
-                        {complaints.slice(0, 10).map((c) => (
-                          <tr key={c.id} className="hover:bg-neutral-surface transition-colors">
-                            <td className="px-6 py-4">
-                              <span className="text-sm font-semibold text-text-primary">{c.issueType}</span>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-text-secondary max-w-[160px] truncate">
-                              {c.street ? `${c.street}, ` : ""}{c.city}, {c.state}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-text-secondary">{c.submittedBy}</td>
-                            <td className="px-6 py-4">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-100 text-blue-700">
-                                Road
-                              </span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${statusStyle(c.status)}`}>
-                                {statusLabel(c.status)}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-sm font-bold text-text-primary">{c.upvoteCount}</td>
-                            <td className="px-6 py-4 text-sm text-text-secondary">
-                              {new Date(c.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" })}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-            </div>
           </div>
         </div>
       </main>

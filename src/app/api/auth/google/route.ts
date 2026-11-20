@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { authCookieOptions } from '@/lib/auth';
 
 export async function GET() {
     const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -10,8 +11,10 @@ export async function GET() {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const redirectUri = `${baseUrl}/api/auth/google/callback`;
 
+    const state = crypto.randomUUID();
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + new URLSearchParams({
         client_id: clientId,
+        state,
         redirect_uri: redirectUri,
         response_type: 'code',
         scope: 'openid email profile',
@@ -19,5 +22,7 @@ export async function GET() {
         prompt: 'consent'
     });
 
-    return NextResponse.redirect(authUrl);
+    const response = NextResponse.redirect(authUrl);
+    response.cookies.set('oauth_state', state, { ...authCookieOptions, maxAge: 60 * 10 });
+    return response;
 }

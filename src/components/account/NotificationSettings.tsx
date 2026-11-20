@@ -1,24 +1,22 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 const PREFS = [
-    { key: 'emailNotifications', label: 'Email Notifications', desc: 'Receive status updates via email.' },
-    { key: 'complaintUpdates', label: 'Complaint Updates', desc: 'Get notified when your complaint status changes.' },
-    { key: 'trafficAlerts', label: 'Traffic Alerts', desc: 'Receive alerts for high-violation zones near you.' },
+    { key: 'emailNotifications', label: 'Email updates', desc: 'Get status updates by email.' },
+    { key: 'complaintUpdates', label: 'Report status changes', desc: 'Hear when a department approves, rejects or resolves your report.' },
+    { key: 'trafficAlerts', label: 'Traffic alerts', desc: 'Get alerts about areas near you with many violations.' },
 ];
 
 export default function NotificationSettings() {
-    const [prefs, setPrefs] = useState<Record<string, boolean>>({
-        emailNotifications: true, complaintUpdates: true, trafficAlerts: false,
-    });
-
-    useEffect(() => {
+    // Lazy init is hydration-safe: my-account mounts this only after its client-side profile fetch.
+    const [prefs, setPrefs] = useState<Record<string, boolean>>(() => {
         try {
-            const saved = localStorage.getItem('sadaksathi_notif_prefs');
-            if (saved) setPrefs(JSON.parse(saved));
+            const saved = typeof window !== 'undefined' ? localStorage.getItem('sadaksathi_notif_prefs') : null;
+            if (saved) return JSON.parse(saved);
         } catch {}
-    }, []);
+        return { emailNotifications: true, complaintUpdates: true, trafficAlerts: false };
+    });
 
     const toggle = (key: string) => {
         const next = { ...prefs, [key]: !prefs[key] };
@@ -27,29 +25,31 @@ export default function NotificationSettings() {
     };
 
     return (
-        <div className="bg-white rounded-2xl shadow-soft border border-border-light overflow-hidden">
-            <div className="px-6 py-4 border-b border-border-light">
-                <h3 className="font-heading font-bold">Notification Preferences</h3>
-                <p className="text-xs text-text-secondary mt-0.5">Choose what you want to hear about</p>
+        <div className="bg-surface rounded-xl border border-border-light elevated">
+            <div className="px-4 sm:px-6 py-4 border-b border-border-light">
+                <h3 className="font-heading font-bold">Notifications</h3>
+                <p className="text-sm text-text-secondary mt-0.5">Saved on this device</p>
             </div>
-            <div className="p-6 space-y-4">
+            <ul className="px-4 sm:px-6 divide-y divide-border-light">
                 {PREFS.map((p) => (
-                    <div key={p.key} className="flex items-center justify-between py-3 border-b border-border-light last:border-0">
+                    <li key={p.key} className="flex items-center justify-between gap-4 py-4">
                         <div>
-                            <div className="text-sm font-medium">{p.label}</div>
-                            <div className="text-xs text-text-secondary mt-0.5">{p.desc}</div>
+                            <div id={`pref-${p.key}`} className="text-sm font-semibold">{p.label}</div>
+                            <div className="text-sm text-text-secondary mt-0.5">{p.desc}</div>
                         </div>
                         <button
+                            type="button"
                             role="switch"
                             aria-checked={prefs[p.key]}
+                            aria-labelledby={`pref-${p.key}`}
                             onClick={() => toggle(p.key)}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ml-4 ${prefs[p.key] ? 'bg-brand-primary' : 'bg-gray-200'}`}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${prefs[p.key] ? 'bg-sign-green' : 'bg-asphalt/30'}`}
                         >
-                            <span className={`inline-block w-4 h-4 transform bg-white rounded-full shadow transition-transform ${prefs[p.key] ? 'translate-x-6' : 'translate-x-1'}`} />
+                            <span className={`inline-block w-4 h-4 transform bg-surface rounded-full transition-transform ${prefs[p.key] ? 'translate-x-6' : 'translate-x-1'}`} />
                         </button>
-                    </div>
+                    </li>
                 ))}
-            </div>
+            </ul>
         </div>
     );
 }

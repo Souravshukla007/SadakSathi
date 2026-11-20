@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -60,3 +61,6 @@ backend/uploads/
 #mics
 result*.jpg
 result*.mp4
+
+# Local Claude Code config and downloaded skills
+/.claude/

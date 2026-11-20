@@ -12,7 +12,7 @@ router = APIRouter(tags=["Health"])
 @router.get("/health", response_model=HealthResponse)
 async def health_check(request: Request):
     """
-    Health check — returns status of both ML models, EasyOCR, GPU, and detector.
+    Health check — status of both ML models, plate OCR, GPU, duplicate detector and the parallel/OCR settings.
 
     Use this endpoint to confirm the server is ready to serve detection requests.
     """
@@ -41,8 +41,10 @@ async def health_check(request: Request):
         model_path=settings.MODEL_PATH,
         traffic_model_loaded=traffic_model is not None,
         traffic_model_path=settings.TRAFFIC_MODEL_PATH,
-        ocr_loaded=ocr_reader is not None,
+        ocr_loaded=bool(ocr_reader),  # loader returns False on failure
         gpu_available=gpu_available,
         device=device,
         detector_reports=len(detector.reports_db) if detector else 0,
+        ocr_enabled=settings.OCR_ENABLED,
+        parallel_workers=getattr(getattr(request.app.state, "model_pool", None), "size", 1),
     )

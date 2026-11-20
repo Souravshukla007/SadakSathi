@@ -3,15 +3,21 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Toaster } from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
 import AppHeader from '@/components/AppHeader';
 import AppFooter from '@/components/AppFooter';
 import TrafficTabs from '@/components/traffic/TrafficTabs';
 import TrafficPreview from '@/components/traffic/TrafficPreview';
 import TrafficAnalyticsCard from '@/components/traffic/TrafficAnalyticsCard';
 import DetectionStreamTable from '@/components/traffic/DetectionStreamTable';
-import UploadAuditCard from '@/components/traffic/UploadAuditCard';
-import LogoutConfirmModal from '@/components/LogoutConfirmModal';
+import StaffNav from '@/components/traffic/StaffNav';
+import StatStrip from '@/components/traffic/StatStrip';
+import { ChallanBadge, ViolationBadge, ViolationTypeBadge, VIOLATION_LABELS_MAP } from '@/components/traffic/ViolationBadge';
+import Reveal from '@/components/Reveal';
+import { BarList, complaintTone, DeskHeader, DonutChart, IconChip, Panel, RowStripe, type Tone } from '@/components/traffic/DeskUI';
+import type { ComplaintStatus } from '@prisma/client';
+import { STATUS_LABEL, statusOptions } from '@/lib/complaintStatus';
+import { Bike, Car, ChartColumn, ChartPie, Gauge, ListChecks, LoaderCircle, ReceiptText, ScanLine, ShieldAlert, Siren, TriangleAlert, Upload, Users } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +37,7 @@ interface TrafficViolation {
     timestamp: string;
     location: string | null;
     vehicle: { vehicleType: string } | null;
+    plateText: string | null;
     challan: { status: string; amount: number } | null;
 }
 
@@ -46,27 +53,9 @@ interface TrafficComplaint {
     evidenceUrl: string | null;
 }
 
-const TRAFFIC_ISSUE_TYPES = ['No Helmet', 'Triple Riding', 'Wrong Side Driving', 'Signal Jumping'];
 
-function violationLabel(type: string): string {
-    const map: Record<string, string> = {
-        helmet_violation: 'No Helmet',
-        triple_riding:    'Triple Riding',
-        wrong_side:       'Wrong Side',
-        plate_detection:  'Plate Detected',
-    };
-    return map[type] ?? type.replace(/_/g, ' ');
-}
-
-function challanStyle(status: string) {
-    switch (status) {
-        case 'Issued':    return 'bg-yellow-100 text-yellow-700';
-        case 'Paid':      return 'bg-green-100 text-green-700';
-        case 'Disputed':  return 'bg-orange-100 text-orange-700';
-        case 'Cancelled': return 'bg-red-100 text-red-700';
-        default:          return 'bg-gray-100 text-gray-600';
-    }
-}
+// Row edge colour follows the violation status: amber needs review, neutral in hand, green done.
+const VIOLATION_TONE: Record<string, Tone> = { detected: 'amber', pending: 'amber', warning: 'amber', cleared: 'green', resolved: 'green' };
 
 const DEFAULT_ANALYTICS: AnalyticsData = {
     totalViolations: 0,
@@ -76,79 +65,72 @@ const DEFAULT_ANALYTICS: AnalyticsData = {
     totalChallansIssued: 0,
 };
 
-// ─── Sidebar ──────────────────────────────────────────────────────────────────
-
-import { usePathname } from 'next/navigation';
-
-function Sidebar({ onLogout }: { onLogout: () => void }) {
-    const pathname = usePathname();
-    const navLinks: { href: string; label: string; icon: string; active?: boolean }[] = [
-        { href: '/Traffic', label: 'Dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
-        { href: '/upload', label: 'Run Detection', icon: 'M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12' },
-        { href: '/results?engine=traffic', label: 'Last Report', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
-        { href: '/Traffic/chat', label: 'Chats', icon: 'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z' },
-        { href: '/Traffic/insights', label: 'Insights', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
-    ];
-
-    return (
-        <aside className="w-64 bg-text-primary text-white hidden lg:flex flex-col fixed inset-y-0 left-0 z-[60]">
-            <div className="p-6 border-b border-white/10">
-                <div className="text-xl font-heading font-bold flex items-center gap-2">
-                    <span className="text-2xl">🛣️</span> SadakSathi
-                </div>
-                <div className="mt-2 text-[10px] text-white/50 font-mono uppercase tracking-widest">Traffic Operations</div>
-            </div>
-
-            <nav className="flex-grow p-4 space-y-1">
-                {navLinks.map((link) => (
-                    <Link
-                        key={link.href}
-                        href={link.href}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                            pathname === link.href || link.active
-                                ? 'bg-brand-primary text-text-primary font-bold'
-                                : 'text-white opacity-70 hover:opacity-100 hover:bg-white/5'
-                        }`}
-                    >
-                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={(link as any).icon} />
-                        </svg>
-                        {link.label}
-                    </Link>
-                ))}
-            </nav>
-
-            <div className="p-4 border-t border-white/10">
-                <button
-                    onClick={onLogout}
-                    className="w-full px-4 py-2 text-xs font-bold text-red-400 hover:text-red-300 hover:bg-white/5 rounded-lg transition-all text-left"
-                >
-                    Sign Out
-                </button>
-            </div>
-        </aside>
-    );
-}
-
-// ─── Feature Cards ─────────────────────────────────────────────────────────────
+// ─── Detection modules ─────────────────────────────────────────────────────────
 
 const FEATURES = [
-    { icon: '🛵', title: 'No Helmet Detection', desc: 'Identify riders without helmets instantly using high-precision headwear detection models.' },
-    { icon: '🚦', title: 'Triple Riding Detection', desc: 'Detect unsafe multi-passenger riding patterns on two-wheelers automatically.' },
-    { icon: '⛔', title: 'Wrong Side Driving', desc: 'Identify vehicles moving against traffic flow to prevent potential collisions in real-time.' },
-    { icon: '📷', title: 'Automatic License Plate Detection', desc: 'Extract license plate details using AI OCR for automated e-challan generation.' },
+    { icon: Bike, title: 'No helmet', desc: 'Flags riders and pillions without a helmet.' },
+    { icon: Users, title: 'Triple riding', desc: 'Flags two-wheelers carrying three or more people.' },
+    { icon: TriangleAlert, title: 'Wrong-side driving', desc: 'Needs a model trained for it. The bundled traffic model does not detect it yet.' },
+    { icon: ScanLine, title: 'Number plate reading', desc: 'Reads plates with OCR so a challan can be raised.' },
 ];
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function TrafficDashboardPage() {
     const router = useRouter();
-    const [activeTab, setActiveTab] = useState('helmet');
+    const [activeTab, setActiveTab] = useState('all');
     const [analytics, setAnalytics] = useState<AnalyticsData>(DEFAULT_ANALYTICS);
-    const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
     const [violations, setViolations] = useState<TrafficViolation[]>([]);
     const [violationsLoading, setViolationsLoading] = useState(true);
     const [trafficComplaints, setTrafficComplaints] = useState<TrafficComplaint[]>([]);
+    const [loadError, setLoadError] = useState(false);
+    const [issuingId, setIssuingId] = useState<string | null>(null);
+
+    const [savingId, setSavingId] = useState<string | null>(null);
+    const updateComplaintStatus = async (id: string, status: string) => {
+        setSavingId(id);
+        try {
+            const res = await fetch(`/api/municipal/complaints/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setTrafficComplaints(prev => prev.map(c => c.id === id ? { ...c, status: data.complaint.status } : c));
+                toast.success('Status updated.');
+            } else {
+                toast.error(data.message || "Couldn't update the status. Try again.");
+            }
+        } catch {
+            toast.error("Couldn't reach the server. Check your connection and try again.");
+        } finally {
+            setSavingId(null);
+        }
+    };
+
+    const issueChallan = async (violationId: string) => {
+        setIssuingId(violationId);
+        try {
+            const res = await fetch('/api/traffic/challan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ violationId }),
+            });
+            const data = await res.json();
+            if (res.ok || res.status === 409) {
+                // 409 means another officer already issued it; show theirs.
+                setViolations(prev => prev.map(v => v.id === violationId ? { ...v, status: 'challan_issued', challan: data.challan } : v));
+                toast.success(res.ok ? 'Challan issued.' : 'A challan was already issued for this violation.');
+            } else {
+                toast.error(data.message || "Couldn't issue the challan. Try again.");
+            }
+        } catch {
+            toast.error("Couldn't reach the server. Check your connection and try again.");
+        } finally {
+            setIssuingId(null);
+        }
+    };
 
     // Auth check
     useEffect(() => {
@@ -162,26 +144,17 @@ export default function TrafficDashboardPage() {
                 
                 const data = await res.json();
                 // Check if user has traffic access
-                if (data.user?.role !== 'traffic' && data.user?.role !== 'user') {
+                if (data.user?.role !== 'traffic' && data.user?.role !== 'admin') {
                     router.push('/auth');
                     return;
                 }
-            } catch (error) {
+            } catch {
                 router.push('/auth');
             }
         };
 
         checkAuth();
     }, [router]);
-
-    const handleLogout = async () => {
-        await fetch('/api/auth/logout', { method: 'POST' });
-        router.push('/login');
-    };
-
-    const triggerLogout = () => {
-        setShowLogoutConfirm(true);
-    };
 
     // Fetch analytics + violations + traffic complaints
     useEffect(() => {
@@ -190,7 +163,8 @@ export default function TrafficDashboardPage() {
             try {
                 const res = await fetch('/api/traffic/analytics');
                 if (res.ok) setAnalytics(await res.json());
-            } catch { /* keep defaults */ }
+                else setLoadError(true);
+            } catch { setLoadError(true); }
 
             // Fetch AI violations + citizen complaints in parallel
             let aiViolations: TrafficViolation[] = [];
@@ -211,6 +185,8 @@ export default function TrafficDashboardPage() {
                 citizenComplaints = Array.isArray(data) ? data : [];
             }
 
+            if (![violationsRes, complaintsRes].every(r => r.status === 'fulfilled' && r.value.ok)) setLoadError(true);
+
             setViolations(aiViolations);
             setTrafficComplaints(citizenComplaints);
             setViolationsLoading(false);
@@ -218,219 +194,245 @@ export default function TrafficDashboardPage() {
         fetchAll();
     }, []);
 
+    const shownViolations = activeTab === 'all' ? violations : violations.filter(v => v.type === activeTab);
+    const typeCounts: Record<string, number> = { all: violations.length };
+    for (const v of violations) typeCounts[v.type] = (typeCounts[v.type] ?? 0) + 1;
+    const byType = Object.entries(typeCounts)
+        .filter(([type]) => type !== 'all')
+        .sort((a, b) => b[1] - a[1])
+        .map(([type, value]) => ({ label: VIOLATION_LABELS_MAP[type] ?? type.replace(/_/g, ' '), value }));
+    const withChallan = violations.filter(v => v.challan).length;
+    const th = 'px-4 py-3 whitespace-nowrap';
+    const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' });
+
     return (
         <>
             <Toaster position="top-center" />
             <AppHeader dashboardMode />
-            <LogoutConfirmModal 
-                isOpen={showLogoutConfirm} 
-                onClose={() => setShowLogoutConfirm(false)} 
-                onConfirm={handleLogout} 
-            />
-            <main className="flex-grow pt-16">
-                <div className="flex min-h-screen bg-neutral-surface">
-                    <Sidebar onLogout={triggerLogout} />
+            <main id="main-content" className="flex-grow pt-16 bg-neutral-surface lg:pl-64">
+                <StaffNav desk="traffic" />
+                <div className="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
+                    <div className="mx-auto max-w-7xl">
 
-                    <div className="flex-grow lg:ml-64 p-6 lg:p-8">
-                        <div className="max-w-7xl mx-auto">
+                        <DeskHeader
+                            icon={Siren}
+                            title="Traffic enforcement"
+                            description="Review AI-detected violations and the challans raised for them."
+                        >
+                            <Link href="/Traffic/insights" className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border-light bg-surface px-4 text-sm font-semibold text-text-primary transition-colors hover:border-sign-green hover:text-sign-green">
+                                <ChartColumn className="h-4 w-4" aria-hidden="true" />
+                                Open insights
+                            </Link>
+                            <Link href="/upload" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-text-primary px-4 text-sm font-bold text-neutral-background shadow-soft transition-colors hover:opacity-90">
+                                <Upload className="h-4 w-4" aria-hidden="true" />
+                                Run detection
+                            </Link>
+                        </DeskHeader>
 
-                            {/* ── Page Header ── */}
-                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
-                                <div>
-                                    <h1 className="text-3xl font-heading font-normal tracking-tight">AI Traffic Enforcement</h1>
-                                    <p className="text-sm text-text-secondary mt-1">
-                                        Detecting safety violations using automated edge-AI vision models.
-                                    </p>
-                                </div>
-                                <button className="flex-shrink-0 inline-flex items-center gap-2 px-5 py-2.5 bg-text-primary text-white font-bold text-sm rounded-lg hover:opacity-90 transition-opacity">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                    </svg>
-                                    Download Full Report
-                                </button>
-                            </div>
+                        {loadError && (
+                            <p role="alert" className="mb-6 rounded-lg border border-signal-red/40 bg-signal-red/5 px-4 py-3 text-sm text-signal-red">
+                                Couldn&apos;t load some traffic data, so figures and lists may be incomplete. Refresh the page; if it keeps happening, check that the database is running.
+                            </p>
+                        )}
 
-                            {/* ── Tabs ── */}
-                            <div className="mb-8">
-                                <TrafficTabs active={activeTab} onChange={setActiveTab} />
-                            </div>
-
-                            {/* ── Stat Summary Bar ── */}
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                                {[
-                                    { label: 'Violations Today', value: analytics.totalViolations, color: 'text-red-600' },
-                                    { label: 'Avg Confidence', value: `${analytics.avgConfidence}%`, color: 'text-brand-primary' },
-                                    { label: 'Vehicles Tracked', value: analytics.vehicleCount.toLocaleString(), color: 'text-text-primary' },
-                                    { label: 'Challans Issued', value: analytics.totalChallansIssued, color: 'text-green-600' },
-                                ].map((s) => (
-                                    <div key={s.label} className="bg-white p-5 rounded-2xl shadow-soft border border-border-light">
-                                        <div className="text-[10px] font-mono font-bold text-text-secondary uppercase tracking-wider mb-2">{s.label}</div>
-                                        <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* ── Main 2-col Grid ── */}
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                                {/* Left: Preview (2/3) */}
-                                <div className="lg:col-span-2">
-                                    <TrafficPreview />
-                                </div>
-                                {/* Right: Analytics (1/3) */}
-                                <div className="flex flex-col gap-6">
-                                    <TrafficAnalyticsCard data={analytics} />
-                                    <UploadAuditCard />
-                                </div>
-                            </div>
-
-                            {/* ── Detection Stream ── */}
-                            <div className="mb-8">
-                                <DetectionStreamTable />
-                            </div>
-
-                            {/* ── Recent Traffic AI Detections Table ── */}
-                            <div className="bg-white rounded-2xl shadow-soft border border-border-light overflow-hidden mb-8">
-                                <div className="px-8 py-6 border-b border-border-light flex justify-between items-center">
-                                    <div>
-                                        <h3 className="font-heading font-bold">Recent Traffic Violations</h3>
-                                        <p className="text-xs text-text-secondary mt-0.5">
-                                            {violations.length > 0
-                                                ? 'AI enforcement engine detections'
-                                                : `Citizen-reported traffic complaints (${trafficComplaints.length} found)`}
-                                        </p>
-                                    </div>
-                                    <Link href="/Traffic/insights" className="text-sm font-bold text-brand-primary hover:underline">View Insights →</Link>
-                                </div>
-
-                                {violationsLoading ? (
-                                    <div className="px-8 py-10 flex justify-center">
-                                        <div className="animate-spin w-6 h-6 border-2 border-brand-primary border-t-transparent rounded-full" />
-                                    </div>
-                                ) : violations.length > 0 ? (
-                                    /* ── AI Violations from TrafficViolation table ── */
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-left">
-                                            <thead>
-                                                <tr className="text-[10px] font-mono text-text-secondary uppercase bg-neutral-surface border-b border-border-light">
-                                                    <th className="px-6 py-4">Violation Type</th>
-                                                    <th className="px-6 py-4">Vehicle</th>
-                                                    <th className="px-6 py-4">Engine</th>
-                                                    <th className="px-6 py-4">Confidence</th>
-                                                    <th className="px-6 py-4">Challan</th>
-                                                    <th className="px-6 py-4">Status</th>
-                                                    <th className="px-6 py-4">Detected</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-border-light">
-                                                {violations.slice(0, 10).map((v) => (
-                                                    <tr key={v.id} className="hover:bg-neutral-surface transition-colors">
-                                                        <td className="px-6 py-4">
-                                                            <span className="text-sm font-semibold text-text-primary capitalize">{violationLabel(v.type)}</span>
-                                                        </td>
-                                                        <td className="px-6 py-4 text-sm text-text-secondary capitalize">
-                                                            {v.vehicle?.vehicleType ?? '—'}
-                                                        </td>
-                                                        <td className="px-6 py-4">
-                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-100 text-purple-700">Traffic AI</span>
-                                                        </td>
-                                                        <td className="px-6 py-4 text-sm font-bold text-text-primary">
-                                                            {(v.confidence * 100).toFixed(1)}%
-                                                        </td>
-                                                        <td className="px-6 py-4">
-                                                            {v.challan ? (
-                                                                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${challanStyle(v.challan.status)}`}>
-                                                                    {v.challan.status} · ₹{v.challan.amount}
-                                                                </span>
-                                                            ) : (
-                                                                <span className="text-xs text-text-secondary">No Challan</span>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-6 py-4">
-                                                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
-                                                                v.status === 'resolved' ? 'bg-green-100 text-green-700' :
-                                                                v.status === 'pending'  ? 'bg-yellow-100 text-yellow-700' :
-                                                                'bg-gray-100 text-gray-600'
-                                                            }`}>{v.status ?? 'detected'}</span>
-                                                        </td>
-                                                        <td className="px-6 py-4 text-sm text-text-secondary">
-                                                            {new Date(v.timestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                ) : trafficComplaints.length > 0 ? (
-                                    /* ── Fallback: Citizen-reported traffic complaints ── */
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-left">
-                                            <thead>
-                                                <tr className="text-[10px] font-mono text-text-secondary uppercase bg-neutral-surface border-b border-border-light">
-                                                    <th className="px-6 py-4">Issue Type</th>
-                                                    <th className="px-6 py-4">Location</th>
-                                                    <th className="px-6 py-4">Source</th>
-                                                    <th className="px-6 py-4">Reported By</th>
-                                                    <th className="px-6 py-4">Status</th>
-                                                    <th className="px-6 py-4">Reported On</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-border-light">
-                                                {trafficComplaints.slice(0, 10).map((c) => (
-                                                    <tr key={c.id} className="hover:bg-neutral-surface transition-colors">
-                                                        <td className="px-6 py-4">
-                                                            <span className="text-sm font-semibold text-text-primary">{c.issueType}</span>
-                                                        </td>
-                                                        <td className="px-6 py-4 text-sm text-text-secondary">
-                                                            {c.city}{c.state ? `, ${c.state}` : ''}
-                                                        </td>
-                                                        <td className="px-6 py-4">
-                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-100 text-blue-700">Citizen Report</span>
-                                                        </td>
-                                                        <td className="px-6 py-4 text-sm text-text-secondary">
-                                                            {c.submittedBy}
-                                                        </td>
-                                                        <td className="px-6 py-4">
-                                                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
-                                                                c.status === 'Completed' || c.status === 'ResolvedReviewed' ? 'bg-green-100 text-green-700' :
-                                                                c.status === 'Approved'  ? 'bg-blue-100 text-blue-700' :
-                                                                c.status === 'OnHold'    ? 'bg-orange-100 text-orange-700' :
-                                                                c.status === 'Rejected'  ? 'bg-red-100 text-red-700' :
-                                                                'bg-yellow-100 text-yellow-700'
-                                                            }`}>{c.status}</span>
-                                                        </td>
-                                                        <td className="px-6 py-4 text-sm text-text-secondary">
-                                                            {new Date(c.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                ) : (
-                                    <div className="px-8 py-16 text-center text-text-secondary">
-                                        <p className="mb-4">No traffic violations or complaints found yet.</p>
-                                        <Link href="/upload" className="text-brand-primary font-bold hover:underline">Run Traffic Detection →</Link>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* ── Feature Cards Grid ── */}
-                            <div>
-                                <h2 className="font-heading font-bold text-lg mb-5">Detection Modules</h2>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    {FEATURES.map((f) => (
-                                        <div key={f.title} className="bg-white p-6 rounded-2xl shadow-soft border border-border-light hover:-translate-y-1 transition-all group">
-                                            <div className="w-12 h-12 bg-brand-primary/10 rounded-xl flex items-center justify-center mb-4 group-hover:bg-brand-primary transition-colors">
-                                                <span className="text-2xl">{f.icon}</span>
-                                            </div>
-                                            <h3 className="font-heading font-bold text-sm mb-2">{f.title}</h3>
-                                            <p className="text-xs text-text-secondary leading-relaxed">{f.desc}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
+                        <div className="mb-6">
+                            <StatStrip stats={[
+                                { label: 'Violations today', value: analytics.totalViolations, icon: ShieldAlert, tone: 'red' },
+                                { label: 'Average confidence', value: `${analytics.avgConfidence}%`, icon: Gauge, tone: 'neutral' },
+                                { label: 'Vehicles tracked', value: analytics.vehicleCount.toLocaleString(), icon: Car, tone: 'neutral' },
+                                { label: 'Challans issued', value: analytics.totalChallansIssued, icon: ReceiptText, tone: 'green', note: `₹${analytics.totalChallanAmount.toLocaleString('en-IN')} in fines` },
+                            ]} />
                         </div>
+
+                        <div className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+                            <Reveal>
+                                <Panel title="Violations by type" icon={ChartColumn} tone="red" className="h-full">
+                                    {byType.length > 0 ? (
+                                        <BarList items={byType} tone="red" />
+                                    ) : (
+                                        <p className="py-8 text-center text-sm text-text-secondary">{violationsLoading ? 'Loading…' : 'Counts by violation type appear after the first detection run.'}</p>
+                                    )}
+                                </Panel>
+                            </Reveal>
+                            <Reveal delay={70}>
+                                <Panel title="Challan status" icon={ChartPie} tone="amber" className="h-full">
+                                    <DonutChart
+                                        centerValue={violations.length - withChallan}
+                                        centerLabel="no challan yet"
+                                        segments={[
+                                            { label: 'No challan yet', value: violations.length - withChallan, tone: 'amber' },
+                                            { label: 'Challan issued', value: withChallan, tone: 'green' },
+                                        ]}
+                                    />
+                                </Panel>
+                            </Reveal>
+                            <Reveal delay={140} className="md:col-span-2 xl:col-span-1">
+                                <TrafficAnalyticsCard data={analytics} />
+                            </Reveal>
+                        </div>
+
+                        <Reveal className="mb-6">
+                        <Panel
+                            title="Recent violations"
+                            icon={ListChecks}
+                            bodyClassName=""
+                            description={violations.length > 0
+                                ? 'Latest 10 detections from the enforcement engine'
+                                : 'No AI detections yet'}
+                        >
+                            {violations.length > 0 && (
+                                <div className="border-b border-border-light px-4 py-3 sm:px-6">
+                                    <TrafficTabs active={activeTab} onChange={setActiveTab} counts={typeCounts} />
+                                </div>
+                            )}
+
+                            {violationsLoading ? (
+                                <div className="flex items-center justify-center gap-2 px-6 py-10 text-sm text-text-secondary">
+                                    <LoaderCircle className="h-5 w-5 animate-spin text-sign-green" aria-hidden="true" />
+                                    Loading violations…
+                                </div>
+                            ) : violations.length > 0 ? (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[720px] text-left">
+                                        <thead className="border-b border-border-light bg-neutral-surface">
+                                            <tr className="text-sm font-semibold text-text-secondary">
+                                                <th scope="col" className={`${th} sm:pl-6`}>Violation</th>
+                                                <th scope="col" className={th}>Vehicle</th>
+                                                <th scope="col" className={th}>Confidence</th>
+                                                <th scope="col" className={th}>Challan</th>
+                                                <th scope="col" className={th}>Status</th>
+                                                <th scope="col" className={`${th} sm:pr-6`}>Detected</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border-light">
+                                            {shownViolations.length === 0 && (
+                                                <tr><td colSpan={6} className="px-4 py-6 text-center text-sm text-text-secondary sm:px-6">No violations of this type yet.</td></tr>
+                                            )}
+                                            {shownViolations.slice(0, 10).map((v) => (
+                                                <tr key={v.id} className="text-sm transition-colors hover:bg-sign-green/5">
+                                                    <td className="relative px-4 py-2.5 sm:pl-6">
+                                                        <RowStripe tone={VIOLATION_TONE[v.status] ?? 'neutral'} />
+                                                        <ViolationTypeBadge type={v.type} />
+                                                    </td>
+                                                    <td className="px-4 py-3 text-text-secondary"><span className="capitalize">{v.vehicle?.vehicleType ?? '—'}</span>{v.plateText && <span className="plate ml-2 text-xs whitespace-nowrap" title="Plate read by OCR. Check it before issuing a challan.">{v.plateText}</span>}</td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="flex items-center gap-2">
+                                                            <span className="w-12 font-semibold tabular-nums">{(v.confidence * 100).toFixed(1)}%</span>
+                                                            <span className="h-2 w-16 overflow-hidden rounded-full bg-neutral-surface" aria-hidden="true">
+                                                                <span className={`block h-full rounded-full ${v.confidence >= 0.9 ? 'bg-signal-red' : 'bg-hazard'}`} style={{ width: `${v.confidence * 100}%` }} />
+                                                            </span>
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        {v.challan ? (
+                                                            <ChallanBadge status={v.challan.status} amount={v.challan.amount} />
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => issueChallan(v.id)}
+                                                                disabled={issuingId === v.id}
+                                                                className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-text-primary px-3 text-xs font-bold text-neutral-background shadow-soft transition-colors hover:opacity-90 disabled:opacity-60"
+                                                            >
+                                                                {issuingId === v.id
+                                                                    ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                                                    : <ReceiptText className="h-4 w-4" aria-hidden="true" />}
+                                                                {issuingId === v.id ? 'Issuing…' : 'Issue challan'}
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3"><ViolationBadge status={v.status ?? 'detected'} /></td>
+                                                    <td className="whitespace-nowrap px-4 py-3 tabular-nums text-text-secondary sm:pr-6">{fmtDate(v.timestamp)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className="px-6 py-14 text-center">
+                                    <span className="mx-auto mb-3 flex w-fit"><IconChip icon={ScanLine} tone="neutral" /></span>
+                                    <p className="font-semibold text-text-primary">No AI-detected violations yet</p>
+                                    <p className="mt-1 text-sm text-text-secondary">Run detection on camera footage to start reviewing violations.</p>
+                                    <Link href="/upload" className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-text-primary px-4 text-sm font-bold text-neutral-background hover:opacity-90">
+                                        Run detection
+                                    </Link>
+                                </div>
+                            )}
+                        </Panel>
+                        </Reveal>
+
+                        {/* Citizen reports of traffic issues: shown always (not only when the AI has found nothing), and the desk sets their status. */}
+                        <Reveal className="mb-6">
+                        <Panel title="Citizen traffic reports" icon={ListChecks} bodyClassName="" description={`Reports from citizens about traffic issues (${trafficComplaints.length}). Change the status as you act on them.`}>
+                            {trafficComplaints.length > 0 ? (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[640px] text-left">
+                                        <thead className="border-b border-border-light bg-neutral-surface">
+                                            <tr className="text-sm font-semibold text-text-secondary">
+                                                <th scope="col" className={`${th} sm:pl-6`}>Issue</th>
+                                                <th scope="col" className={th}>Location</th>
+                                                <th scope="col" className={th}>Reported by</th>
+                                                <th scope="col" className={th}>Status</th>
+                                                <th scope="col" className={`${th} sm:pr-6`}>Reported</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border-light">
+                                            {trafficComplaints.slice(0, 10).map((c) => (
+                                                <tr key={c.id} className="text-sm transition-colors hover:bg-sign-green/5">
+                                                    <td className="relative px-4 py-3 font-semibold text-text-primary sm:pl-6">
+                                                        <RowStripe tone={complaintTone(c.status)} />
+                                                        {c.issueType}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-text-secondary">{c.city}{c.state ? `, ${c.state}` : ''}</td>
+                                                    <td className="px-4 py-3 text-text-secondary">{c.submittedBy}</td>
+                                                    <td className="px-4 py-3">
+                                                        <label className="sr-only" htmlFor={`status-${c.id}`}>Status of {c.issueType} report</label>
+                                                        <select
+                                                            id={`status-${c.id}`}
+                                                            value={c.status}
+                                                            disabled={savingId === c.id || statusOptions(c.status as ComplaintStatus).length === 1}
+                                                            onChange={(e) => updateComplaintStatus(c.id, e.target.value)}
+                                                            className="min-h-11 rounded-lg border border-border-light bg-surface px-2 text-sm font-semibold text-text-primary disabled:opacity-60"
+                                                        >
+                                                            {statusOptions(c.status as ComplaintStatus).map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                                                        </select>
+                                                    </td>
+                                                    <td className="whitespace-nowrap px-4 py-3 tabular-nums text-text-secondary sm:pr-6">{fmtDate(c.createdAt)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <p className="px-6 py-10 text-center text-sm text-text-secondary">No citizen traffic reports yet.</p>
+                            )}
+                        </Panel>
+                        </Reveal>
+
+                        <Reveal className="mb-6">
+                            <DetectionStreamTable />
+                        </Reveal>
+
+                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+                            <Reveal className="lg:col-span-3">
+                                <TrafficPreview />
+                            </Reveal>
+                            <Reveal delay={70} className="lg:col-span-2">
+                                <Panel title="What the detector checks" icon={ScanLine} className="h-full" bodyClassName="">
+                                    <ul className="divide-y divide-border-light">
+                                        {FEATURES.map(({ icon, title, desc }) => (
+                                            <li key={title} className="flex gap-3 px-4 py-4 transition-colors hover:bg-sign-green/5 sm:px-6">
+                                                <IconChip icon={icon} tone="red" size="sm" />
+                                                <div>
+                                                    <h3 className="text-sm font-bold">{title}</h3>
+                                                    <p className="mt-0.5 text-sm text-text-secondary">{desc}</p>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </Panel>
+                            </Reveal>
+                        </div>
+
                     </div>
                 </div>
             </main>

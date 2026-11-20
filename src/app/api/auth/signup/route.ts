@@ -1,15 +1,27 @@
 import { NextResponse } from 'next/server';
 import { hashPassword } from '@/lib/auth';
-import { signToken } from '@/lib/jwt';
 import { prisma } from '@/lib/prisma';
+import { setSessionCookie } from '@/lib/session';
+import { allow, clientIp } from '@/lib/rateLimit';
+import { Prisma } from '@prisma/client';
 
 export async function POST(req: Request) {
     try {
+        if (!allow(`signup:${clientIp(req)}`, 5, 3_600_000)) {
+            return NextResponse.json({ message: 'Too many sign-ups from this network. Try again in an hour.' }, { status: 429 });
+        }
         const body = await req.json();
-        const { firstName, lastName, email, role, password } = body;
+        const { firstName, lastName, email, password } = body;
 
-        if (!firstName || !lastName || !email || !password) {
+        if (typeof firstName !== 'string' || typeof lastName !== 'string' || typeof email !== 'string' || !firstName || !lastName || !email || !password) {
             return NextResponse.json({ message: 'Missing required fields' }, { status: 400 });
+        }
+        if (typeof password !== 'string' || password.length < 8) {
+            return NextResponse.json({ message: 'Password must be at least 8 characters.' }, { status: 400 });
+        }
+        // Names appear on the public feed and leaderboard; 254 is the longest valid email address.
+        if (firstName.length > 50 || lastName.length > 50 || email.length > 254 || password.length > 200) {
+            return NextResponse.json({ message: 'Names can be up to 50 characters, and the email up to 254.' }, { status: 400 });
         }
 
         const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -25,24 +37,17 @@ export async function POST(req: Request) {
                 username: email.split('@')[0] + '_' + crypto.randomUUID().slice(0, 12),
                 fullName,
                 email,
-                role: role === 'City Administrator' ? 'admin' : (role === 'Maintenance Contractor' ? 'contractor' : 'user'),
+                role: 'user', // never trust a client-supplied role
                 passwordHash: hashedPassword,
             }
         });
 
-        const token = await signToken({ id: user.id, role: user.role });
-
-        const response = NextResponse.json({ message: 'User created successfully' }, { status: 201 });
-        response.cookies.set('auth_token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 60 * 60 * 24 * 7, // 7 days
-            path: '/',
-        });
-
-        return response;
+        return setSessionCookie(NextResponse.json({ message: 'User created successfully' }, { status: 201 }), user);
     } catch (error) {
+        // Two sign-ups racing past the existence check: the unique index decides.
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+            return NextResponse.json({ message: 'User with this email already exists' }, { status: 409 });
+        }
         console.error('Signup error:', error);
         return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
     }

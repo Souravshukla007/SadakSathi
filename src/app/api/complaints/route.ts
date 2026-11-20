@@ -1,37 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { verifyToken } from '@/lib/jwt';
 import { prisma } from '@/lib/prisma';
+import { requireUser } from '@/lib/session';
 import { checkAndFlagDuplicate } from '@/lib/duplicateDetection';
+import { mediaError } from '@/lib/complaintMedia';
+
+const MAX_REPORTS_PER_DAY = 20;
 
 export async function POST(req: NextRequest) {
     try {
-        const cookieStore = await cookies();
-        const token = cookieStore.get('auth_token')?.value;
+        const session = await requireUser();
+        if (session instanceof NextResponse) return session;
+        const userId = session.id;
 
-        if (!token) {
-            return NextResponse.json({ message: 'Unauthorized — please log in to submit a complaint.' }, { status: 401 });
-        }
-
-        const payload = await verifyToken(token);
-        if (!payload || !payload.id) {
-            return NextResponse.json({ message: 'Unauthorized — invalid session.' }, { status: 401 });
-        }
-
-        const userId = payload.id as string;
-
-        // Guard: verify the user actually exists in the DB.
-        // JWT may be valid but the user record could have been deleted
-        // or the DB reset after the token was issued.
-        const userExists = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { id: true },
-        });
-        if (!userExists) {
-            return NextResponse.json(
-                { message: 'Session expired — please log in again.' },
-                { status: 401 },
-            );
+        const recent = await prisma.complaint.count({ where: { userId, createdAt: { gte: new Date(Date.now() - 86_400_000) } } });
+        if (recent >= MAX_REPORTS_PER_DAY) {
+            return NextResponse.json({ message: `You can file up to ${MAX_REPORTS_PER_DAY} reports a day. Try again tomorrow.` }, { status: 429 });
         }
 
         const body = await req.json();
@@ -46,6 +29,21 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        // Requests may be up to 110 MB (for videos), so cap the text: the feed sends it to every visitor.
+        const tooLong = Object.entries({ issueType: [issueType, 100], description: [description, 2000], street: [street, 200], city: [city, 100], state: [state, 100], zipcode: [zipcode, 20] })
+            .find(([, [v, max]]) => typeof v !== 'string' || v.length > (max as number));
+        if (tooLong) {
+            return NextResponse.json({ message: `${tooLong[0]} must be text of at most ${tooLong[1][1]} characters.` }, { status: 400 });
+        }
+
+        const badMedia = mediaError(evidenceUrl, 'image') ?? mediaError(videoUrl, 'video');
+        if (badMedia) return NextResponse.json({ message: badMedia.message }, { status: badMedia.status });
+
+        const lat = parseFloat(latitude);
+        const lng = parseFloat(longitude);
+        const parsedLat = Number.isFinite(lat) ? lat : null;
+        const parsedLng = Number.isFinite(lng) ? lng : null;
+
         const complaint = await prisma.complaint.create({
             data: {
                 userId,
@@ -55,24 +53,18 @@ export async function POST(req: NextRequest) {
                 city,
                 state,
                 zipcode,
-                latitude:    latitude   ? parseFloat(latitude)   : null,
-                longitude:   longitude  ? parseFloat(longitude)  : null,
-                evidenceUrl: evidenceUrl ?? null,
-                videoUrl:    videoUrl   ?? null,
+                latitude:    parsedLat,
+                longitude:   parsedLng,
+                evidenceUrl: evidenceUrl || null,
+                videoUrl:    videoUrl || null,
                 status: 'Submitted',
             },
         });
 
         // ── Automatic duplicate detection ──────────────────────────────────
-        const parsedLat = latitude  ? parseFloat(latitude)  : null;
-        const parsedLng = longitude ? parseFloat(longitude) : null;
-
-        const duplicateOfId = await checkAndFlagDuplicate(
-            complaint.id,
-            issueType,
-            parsedLat,
-            parsedLng,
-        );
+        const duplicateOfId = await checkAndFlagDuplicate({
+            id: complaint.id, createdAt: complaint.createdAt, issueType, description, lat: parsedLat, lng: parsedLng, evidenceUrl: evidenceUrl || null,
+        });
         // ─────────────────────────────────────────────────────────────────────
 
         // Log activity

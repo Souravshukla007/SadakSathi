@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 
 import numpy as np
 
@@ -19,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 _florence_model = None
 _florence_processor = None
+FLORENCE_REVISION = "5ca5edf5bd017b9919c05d08aebef5e4c7ac3bac"  # microsoft/Florence-2-base, pinned
+# One shared Florence copy (~1 GB); parallel detection requests take turns for plate reading.
+_ocr_lock = threading.Lock()
 
 
 def load_plate_ocr(
@@ -53,11 +57,15 @@ def load_plate_ocr(
 
         logger.info(f"Loading Florence-2 OCR: {model_id} on {device} ({dtype})")
 
+        # trust_remote_code runs Python from the model repo, so pin an exact commit: a later
+        # change (or takeover) of the Hub repo can't run new code here.
+        revision = FLORENCE_REVISION if model_id == "microsoft/Florence-2-base" else None
         _florence_processor = AutoProcessor.from_pretrained(
-            model_id, trust_remote_code=True
+            model_id, trust_remote_code=True, revision=revision
         )
         _florence_model = AutoModelForCausalLM.from_pretrained(
             model_id,
+            revision=revision,
             torch_dtype=dtype,
             trust_remote_code=True,
             attn_implementation="eager",   # torch 2.2.2 lacks SDPA attrs Florence-2 expects
@@ -115,7 +123,7 @@ def read_plate_text(image: np.ndarray, bbox: dict, pad: int = 6) -> str | None:
             text=task, images=pil_img, return_tensors="pt"
         ).to(device)
 
-        with torch.no_grad():
+        with _ocr_lock, torch.no_grad():
             generated_ids = _florence_model.generate(
                 input_ids=inputs["input_ids"],
                 pixel_values=inputs["pixel_values"],

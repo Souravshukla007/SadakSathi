@@ -1,13 +1,28 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useSyncExternalStore } from 'react';
+import { Cctv } from 'lucide-react';
+import { IconChip } from './DeskUI';
 
+// Illustrative frame: shows staff what the detector draws, not a real camera feed.
 const MOCK_BOXES = [
-    { label: 'NO HELMET', confidence: 98, color: 'red', x: '10%', y: '20%', w: '25%', h: '35%' },
-    { label: 'TRIPLE RIDING', confidence: 92, color: 'red', x: '40%', y: '35%', w: '30%', h: '40%' },
-    { label: 'HELMET', confidence: 96, color: 'green', x: '75%', y: '25%', w: '20%', h: '30%' },
-    { label: 'NUMBER PLATE', confidence: 88, color: 'orange', x: '45%', y: '70%', w: '15%', h: '10%', plateText: 'MH 12 AB 1234' },
+    { label: 'No helmet', confidence: 98, color: 'red', x: '10%', y: '20%', w: '25%', h: '35%' },
+    { label: 'Triple riding', confidence: 92, color: 'red', x: '40%', y: '30%', w: '30%', h: '38%' },
+    { label: 'Helmet', confidence: 96, color: 'green', x: '75%', y: '25%', w: '20%', h: '30%' },
+    { label: 'Number plate', confidence: 88, color: 'amber', x: '45%', y: '64%', w: '15%', h: '9%', plateText: 'MH 12 AB 1234' },
 ];
+
+const BOX_STYLE: Record<string, { border: string; tag: string }> = {
+    red: { border: 'border-signal-red', tag: 'bg-signal-red text-white' },
+    amber: { border: 'border-hazard', tag: 'bg-hazard text-asphalt' },
+    green: { border: 'border-sign-green', tag: 'bg-text-primary text-neutral-background' },
+};
+
+const subscribeClock = (onTick: () => void) => {
+    const timer = setInterval(onTick, 1000);
+    return () => clearInterval(timer);
+};
+const readClock = () => new Date().toLocaleTimeString('en-IN', { hour12: false });
 
 interface TrafficPreviewProps {
     frameNumber?: number;
@@ -15,120 +30,74 @@ interface TrafficPreviewProps {
 }
 
 export default function TrafficPreview({ frameNumber = 842, totalFrames = 1200 }: TrafficPreviewProps) {
-    const [timeStr, setTimeStr] = useState('');
-
-    useEffect(() => {
-        // Set initial time client-side only to avoid SSR hydration mismatch
-        setTimeStr(new Date().toLocaleTimeString('en-IN', { hour12: false }));
-        const timer = setInterval(() => {
-            setTimeStr(new Date().toLocaleTimeString('en-IN', { hour12: false }));
-        }, 1000);
-        return () => clearInterval(timer);
-    }, []);
+    // Empty on the server and during hydration (avoids a mismatch), then ticks every second.
+    const timeStr = useSyncExternalStore(subscribeClock, readClock, () => '');
 
     return (
-        <div className="bg-white rounded-2xl shadow-soft border border-border-light overflow-hidden">
-            <div className="px-6 py-4 border-b border-border-light flex justify-between items-center">
-                <div>
-                    <h3 className="font-heading font-bold">Traffic Detection Preview</h3>
-                    <p className="text-xs text-text-secondary mt-0.5">Live edge-AI inference on camera feed</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-green-600">
-                        <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                        LIVE
-                    </span>
+        <section className="elevated overflow-hidden rounded-xl border border-border-light bg-surface">
+            <div className="flex items-center gap-3 border-b border-border-light px-4 py-4 sm:px-6">
+                <IconChip icon={Cctv} tone="neutral" size="sm" />
+                <div className="min-w-0">
+                    <h2 className="font-heading font-bold">What the detector marks</h2>
+                    <p className="mt-0.5 text-sm text-text-secondary">Sample frame showing how violations, plates and compliant riders are boxed.</p>
                 </div>
             </div>
 
-            {/* Video Frame Mock */}
-            <div className="relative bg-gray-900 aspect-video mx-6 my-4 rounded-xl overflow-hidden">
-                {/* Road scene background */}
-                <div className="absolute inset-0 bg-gradient-to-b from-gray-800 via-gray-700 to-gray-600">
-                    {/* Road lines */}
-                    <div className="absolute bottom-0 left-0 right-0 h-1/3 bg-gray-900/60">
-                        <div className="absolute top-1/2 left-0 right-0 h-1 flex gap-8 px-12">
-                            {[0,1,2,3,4,5].map(i => (
-                                <div key={i} className="flex-1 h-full bg-yellow-400/40 rounded" />
-                            ))}
-                        </div>
+            <div className="relative mx-4 my-4 aspect-video overflow-hidden rounded-lg bg-asphalt sm:mx-6">
+                {/* One scan pass on load, the way the model sweeps a frame. */}
+                <span className="absolute inset-x-0 z-10 h-0.5 bg-hazard animate-scan-once" aria-hidden="true" />
+                <span className="absolute right-2 top-2 rounded bg-black/70 px-2 py-0.5 text-[10px] font-semibold text-white sm:text-xs">Sample frame</span>
+                {/* Road surface with a dashed centre line */}
+                <div className="absolute inset-x-0 bottom-0 h-1/3 bg-black/30">
+                    <div className="absolute inset-x-0 top-1/2 flex h-1 gap-8 px-12">
+                        {[0, 1, 2, 3, 4, 5].map((i) => (
+                            <div key={i} className="h-full flex-1 rounded bg-hazard/40" />
+                        ))}
                     </div>
-                    {/* Sky */}
-                    <div className="absolute top-0 left-0 right-0 h-1/3 bg-gradient-to-b from-blue-900/40 to-transparent" />
                 </div>
 
-                {/* Bounding boxes */}
-                {MOCK_BOXES.map((box, i) => (
-                    <div
-                        key={i}
-                        className="absolute"
-                        style={{ left: box.x, top: box.y, width: box.w, height: box.h }}
-                    >
-                        <div
-                            className="w-full h-full border-2 rounded"
-                            style={{ borderColor: box.color === 'red' ? '#ef4444' : '#22c55e' }}
-                        />
-                        <div
-                            className="absolute -top-6 left-0 px-2 py-0.5 text-[10px] font-bold text-white rounded flex flex-col gap-0.5 whitespace-nowrap"
-                            style={{ backgroundColor: box.color === 'red' ? '#ef4444' : box.color === 'orange' ? '#f97316' : '#22c55e' }}
-                        >
-                            <span className="flex items-center gap-1">{box.label} ({box.confidence}%)</span>
+                {MOCK_BOXES.map((box) => {
+                    const style = BOX_STYLE[box.color];
+                    return (
+                        <div key={box.label} className="absolute" style={{ left: box.x, top: box.y, width: box.w, height: box.h }}>
+                            <div className={`h-full w-full rounded-sm border-2 ${style.border}`} />
+                            <div className={`absolute bottom-full left-0 mb-0.5 flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[10px] font-bold sm:text-xs ${style.tag}`}>
+                                {box.label} {box.confidence}%
+                            </div>
                             {box.plateText && (
-                                <span className="bg-white/20 px-1 py-0.5 rounded text-[9px] tracking-wider font-mono">
+                                <span className="plate absolute left-0 top-full mt-0.5 whitespace-nowrap text-[10px] font-bold sm:text-xs">
                                     {box.plateText}
                                 </span>
                             )}
-                            {box.confidence > 70 && (
-                                <span className="flex items-center gap-1 bg-red-700 text-white px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider animate-pulse">
-                                    🚨 Traffic Alert High
-                                </span>
-                            )}
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
 
-                {/* Scanline overlay */}
-                <div className="absolute inset-0 pointer-events-none"
-                    style={{ background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px)' }}
-                />
-
-                {/* Bottom HUD */}
-                <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-4 py-2 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <span className="text-[10px] font-mono text-yellow-400 font-bold">
-                            ⬡ PROCESSING FRAME {frameNumber}/{totalFrames}
+                <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-black/70 px-3 py-1.5 text-[10px] text-white/80 sm:text-xs">
+                    <span className="flex min-w-0 items-center gap-2">
+                        <span className="whitespace-nowrap tabular-nums">Frame {frameNumber} of {totalFrames}</span>
+                        <span className="hidden h-1 w-24 overflow-hidden rounded-full bg-white/20 sm:block" aria-hidden="true">
+                            <span className="block h-full rounded-full bg-hazard" style={{ width: `${(frameNumber / totalFrames) * 100}%` }} />
                         </span>
-                        <div className="w-32 h-1 bg-gray-600 rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-yellow-400 rounded-full"
-                                style={{ width: `${(frameNumber / totalFrames) * 100}%` }}
-                            />
-                        </div>
-                    </div>
-                    <span className="text-[10px] font-mono text-white/60">{timeStr}</span>
-                </div>
-
-                {/* Corner markers */}
-                {['top-2 left-2', 'top-2 right-2', 'bottom-6 left-2', 'bottom-6 right-2'].map((pos, i) => (
-                    <div key={i} className={`absolute ${pos} w-4 h-4 border-white/40 ${i < 2 ? 'border-t' : 'border-b'} ${i % 2 === 0 ? 'border-l' : 'border-r'}`} />
-                ))}
-            </div>
-
-            {/* Legend */}
-            <div className="px-6 pb-4 flex flex-wrap items-center gap-6">
-                <div className="flex items-center gap-2 text-xs text-text-secondary">
-                    <div className="w-4 h-0.5 bg-red-500 rounded" />
-                    <span>Violation Detected</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-text-secondary">
-                    <div className="w-4 h-0.5 bg-orange-500 rounded" />
-                    <span>Number Plate (OCR)</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-text-secondary">
-                    <div className="w-4 h-0.5 bg-green-500 rounded" />
-                    <span>Compliant</span>
+                    </span>
+                    <span className="tabular-nums">{timeStr}</span>
                 </div>
             </div>
-        </div>
+
+            <ul className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 pb-4 text-sm text-text-secondary sm:px-6">
+                <li className="flex items-center gap-2">
+                    <span className="h-0.5 w-4 rounded bg-signal-red" aria-hidden="true" />
+                    Violation
+                </li>
+                <li className="flex items-center gap-2">
+                    <span className="h-0.5 w-4 rounded bg-hazard" aria-hidden="true" />
+                    Number plate (OCR)
+                </li>
+                <li className="flex items-center gap-2">
+                    <span className="h-0.5 w-4 rounded bg-sign-green" aria-hidden="true" />
+                    Compliant
+                </li>
+            </ul>
+        </section>
     );
 }

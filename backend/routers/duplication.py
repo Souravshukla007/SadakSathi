@@ -10,6 +10,7 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+from collections import Counter
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -35,7 +36,7 @@ def _get_detector(request: Request):
 
 
 @router.post("/check", response_model=DuplicateCheckResponse)
-async def check_duplicate(request: Request, body: DuplicateCheckRequest):
+def check_duplicate(request: Request, body: DuplicateCheckRequest):
     """
     Check if a new report is a duplicate of any existing report.
 
@@ -79,7 +80,7 @@ async def check_duplicate(request: Request, body: DuplicateCheckRequest):
 
 
 @router.post("/add-report", response_model=AddReportResponse)
-async def add_report(request: Request, body: AddReportRequest):
+def add_report(request: Request, body: AddReportRequest):
     """
     Add a report to the detector's internal database for future duplicate checks.
 
@@ -100,27 +101,24 @@ async def add_report(request: Request, body: AddReportRequest):
     index = detector.add_report(report_data)
 
     if index is not None:
-        # Rebuild clusters periodically
-        if len(detector.reports_db) >= 2 and len(detector.reports_db) % 10 == 0:
-            detector.build_clusters()
-
         return AddReportResponse(success=True, index=index, message=f"Report added at index {index}.")
     else:
         return AddReportResponse(success=False, index=None, message="Failed to add report.")
 
 
 @router.get("/stats", response_model=DuplicateStatsResponse)
-async def duplicate_stats(request: Request):
+def duplicate_stats(request: Request):
     """
     Get statistics about the duplicate detector's current state.
     """
     detector = _get_detector(request)
 
-    issue_counts = {k: len(v) for k, v in detector.issue_type_clusters.items()}
+    issue_counts = dict(Counter(detector.issue_types_db))
 
     return DuplicateStatsResponse(
         total_reports=len(detector.reports_db),
         issue_types=issue_counts,
-        xgboost_trained=detector.has_enough_data_for_xgboost,
-        clusters_built=detector.image_kmeans is not None,
+        # XGBoost and stored KMeans were removed from the v2 detector; keep the response shape.
+        xgboost_trained=getattr(detector, "has_enough_data_for_xgboost", False),
+        clusters_built=getattr(detector, "image_kmeans", None) is not None,
     )

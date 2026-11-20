@@ -19,8 +19,9 @@ import uuid
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
 from config import UPLOAD_PATH
+from ml.pool import pool_for
+from ml.uploads import ensure_readable_video, save_video
 from models.schemas import ImageAssessmentResponse, VideoAssessmentResponse
-from routers.stats import record_detection
 
 # NOTE: ml.detection imports are deferred to function level so the router module
 # can be imported in lightweight environments (CI) where torch is not installed.
@@ -30,14 +31,14 @@ router = APIRouter(prefix="/detect", tags=["Detection"])
 
 # Max file sizes
 MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
-MAX_VIDEO_SIZE = 100 * 1024 * 1024  # 100 MB
+
 
 
 @router.post("/image", response_model=ImageAssessmentResponse)
-async def detect_image(
+def detect_image(
     request: Request,
     file: UploadFile = File(..., description="Image file (JPG, PNG, WEBP)"),
-    conf_threshold: float = Form(0.20, description="Confidence threshold (0.0 - 1.0). Default 0.20 matches best_municipal.pt optimal sensitivity."),
+    conf_threshold: float = Form(0.20, ge=0.0, le=1.0, description="Confidence threshold (0.0 - 1.0). Default 0.20 matches best_municipal.pt optimal sensitivity."),
     include_annotated: bool = Form(True, description="Include base64-encoded annotated image"),
 ):
     """
@@ -61,22 +62,25 @@ async def detect_image(
         raise HTTPException(status_code=400, detail=f"Expected image file, got: {content_type}")
 
     # Read file bytes
-    image_bytes = await file.read()
+    image_bytes = file.file.read(MAX_IMAGE_SIZE + 1)
     if len(image_bytes) > MAX_IMAGE_SIZE:
         raise HTTPException(status_code=413, detail=f"Image too large. Max {MAX_IMAGE_SIZE // (1024*1024)}MB.")
 
     # Run detection
     device = get_device()
-    result, annotated = assess_road_image(
-        image_bytes,
-        model=model,
-        conf_threshold=conf_threshold,
-        device=device,
-        return_annotated=include_annotated,
-    )
+    with pool_for(request.app.state, "model").acquire() as pooled:
+        result, annotated = assess_road_image(
+            image_bytes,
+            model=pooled,
+            conf_threshold=conf_threshold,
+            device=device,
+            return_annotated=include_annotated,
+        )
 
     if not result.get("success"):
-        raise HTTPException(status_code=500, detail=result.get("message", "Detection failed"))
+        message = result.get("message", "Detection failed")
+        # A file that isn't a readable image is the caller's mistake (400), not a server fault (500).
+        raise HTTPException(status_code=400 if "decode" in message.lower() else 500, detail=message)
 
     # Encode annotated image
     annotated_b64 = None
@@ -99,23 +103,15 @@ async def detect_image(
         message=result.get("message", ""),
     )
 
-    # Update session-scoped stats
-    record_detection(
-        engine="road",
-        total_detections=response.total_detections,
-        priority_counts=result.get("priority_counts", {}),
-        class_counts={det.class_name: 1 for det in response.detections},
-    )
-
     return response
 
 
 @router.post("/video", response_model=VideoAssessmentResponse)
-async def detect_video(
+def detect_video(
     request: Request,
     file: UploadFile = File(..., description="Video file (MP4, AVI, MOV)"),
-    conf_threshold: float = Form(0.20, description="Confidence threshold. Default 0.20 matches best_municipal.pt."),
-    sample_rate: int = Form(5, description="Process every Nth frame (default: 5)"),
+    conf_threshold: float = Form(0.20, ge=0.0, le=1.0, description="Confidence threshold. Default 0.20 matches best_municipal.pt."),
+    sample_rate: int = Form(5, ge=1, description="Process every Nth frame (default: 5)"),
 ):
     """
     Upload a video for hazard detection.
@@ -132,26 +128,23 @@ async def detect_video(
     if not content_type.startswith("video/"):
         raise HTTPException(status_code=400, detail=f"Expected video file, got: {content_type}")
 
-    video_bytes = await file.read()
-    if len(video_bytes) > MAX_VIDEO_SIZE:
-        raise HTTPException(status_code=413, detail=f"Video too large. Max {MAX_VIDEO_SIZE // (1024*1024)}MB.")
-
     # Save to temp file (OpenCV needs file path for video)
     temp_filename = f"{uuid.uuid4().hex}.mp4"
     temp_path = UPLOAD_PATH / temp_filename
 
     try:
-        with open(temp_path, "wb") as f:
-            f.write(video_bytes)
+        save_video(file.file, temp_path)
+        ensure_readable_video(temp_path)
 
         device = get_device()
-        result = assess_road_video(
-            str(temp_path),
-            model=model,
-            conf_threshold=conf_threshold,
-            device=device,
-            sample_rate=sample_rate,
-        )
+        with pool_for(request.app.state, "model").acquire() as pooled:
+            result = assess_road_video(
+                str(temp_path),
+                model=pooled,
+                conf_threshold=conf_threshold,
+                device=device,
+                sample_rate=sample_rate,
+            )
 
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("message", "Video processing failed"))
@@ -165,15 +158,6 @@ async def detect_video(
             annotated_image_base64=result.get("annotated_image_base64"),
             summary=result.get("summary", {}),
             message=result.get("message", ""),
-        )
-
-        # Update session-scoped stats
-        summary = result.get("summary", {})
-        record_detection(
-            engine="road",
-            total_detections=response.total_detections,
-            priority_counts=summary.get("priority_counts", {}),
-            class_counts=summary.get("class_counts", {}),
         )
 
         return response

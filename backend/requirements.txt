@@ -15,17 +15,20 @@ pydantic-settings>=2.2.0
 python-dotenv>=1.0.0
 
 # --- Image & Video Processing ---
-opencv-python-headless>=4.9.0
+opencv-python-headless>=4.9.0,<4.12  # 4.12+ requires numpy 2
 Pillow>=10.2.0
-numpy>=1.26.0
+numpy>=1.26.0,<2  # torch 2.2.2 wheels are built against numpy 1.x
 
 # --- ML / YOLO ---
 # CPU-only PyTorch wheels from the official PyTorch index (avoids 2.5GB CUDA build)
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.2.2+cpu
-torchvision==0.17.2+cpu
+# "+cpu" builds exist only for x86-64/Windows; ARM64 (Raspberry Pi) gets the plain build (CPU-only there anyway).
+torch==2.2.2+cpu; platform_machine == "x86_64" or platform_machine == "AMD64"
+torchvision==0.17.2+cpu; platform_machine == "x86_64" or platform_machine == "AMD64"
+torch==2.2.2; platform_machine == "aarch64" or platform_machine == "arm64"
+torchvision==0.17.2; platform_machine == "aarch64" or platform_machine == "arm64"
 
-ultralytics>=8.2.0
+ultralytics>=8.4.0  # YOLO26 weights; track callbacks only fire in mode=track
 
 # --- Geo (duplication detection) ---
 geopy>=2.4.0
@@ -33,7 +36,8 @@ geopy>=2.4.0
 # --- NLP similarity (duplication detection) ---
 # Pin python-bidi to pure-Python version (>=0.6 requires Rust/maturin)
 python-bidi==0.4.2
-sentence-transformers>=3.0.0
+sentence-transformers>=3.0.0,<4
+transformers>=4.40,<5  # Florence-2 remote code and torch 2.2 need transformers 4.x
 scikit-learn>=1.4.0
 
 # --- Plate OCR (Florence-2, replaces EasyOCR) ---

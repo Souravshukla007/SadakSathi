@@ -1,55 +1,28 @@
 "use client";
 
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useMemo, useSyncExternalStore } from "react";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
+import { ArrowLeft, Download, Film, Fingerprint, Gauge, ImageOff, Loader2, Plus, ScanLine, TriangleAlert } from "lucide-react";
+import Reveal from "@/components/Reveal";
+import PageHero from "@/components/dashboard/PageHero";
+import StatTile from "@/components/dashboard/StatTile";
+import EmptyState, { RoadIllustration } from "@/components/dashboard/EmptyState";
+import DetectionCard from "@/components/dashboard/DetectionCard";
+import { PriorityBadge } from "@/components/dashboard/StatusBadge";
 import {
   getLastDetection,
   getDetectionHistory,
   getLastVideoBlobUrl,
-  StoredDetection,
-  ImageAssessmentResponse,
-  TrafficAssessmentResponse,
-  SingleDetection,
-  TrafficDetection,
+  MlResultView,
   relativeTime,
-  saveComplaintPrefill,
+  prefillFromScan,
 } from "@/lib/mlApi";
 
-// Map ML class names to complaint issue types
-const CLASS_TO_ISSUE: Record<string, string> = {
-  pothole:           "Pothole",
-  road_crack:        "Pothole",
-  garbage:           "Garbage Accumulation",
-  garbage_dump:      "Garbage Accumulation",
-  open_manhole:      "Open Manhole",
-  manhole:           "Open Manhole",
-  fallen_tree:       "Fallen Tree",
-  broken_light:      "Broken Street Light",
-  broken_sign:       "Broken Sign",
-  waterlogging:      "Waterlogging",
-};
-
-function classToIssueType(classes: string[]): string {
-  for (const cls of classes) {
-    const mapped = CLASS_TO_ISSUE[cls.toLowerCase()];
-    if (mapped) return mapped;
-  }
-  return "Other";
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function priorityBadge(priority: string) {
-  switch (priority?.toUpperCase()) {
-    case "HIGH":   return "bg-red-100 text-red-600";
-    case "MEDIUM": return "bg-yellow-100 text-yellow-600";
-    default:       return "bg-green-100 text-green-600";
-  }
-}
+const noopSubscribe = () => () => {};
 
 function avgConfidence(detections: { confidence: number }[]): string {
   if (!detections || detections.length === 0) return "0.0";
@@ -72,68 +45,30 @@ function downloadJSON(data: unknown, filename: string) {
 function ResultsPageInner() {
   const router       = useRouter();
   const searchParams = useSearchParams();
-  const [stored, setStored] = useState<StoredDetection | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
+  // false during prerender/hydration, true on the client: sessionStorage and the blob URL exist only there.
+  const loaded = useSyncExternalStore(noopSubscribe, () => true, () => false);
+  const engineFilter = searchParams.get("engine");
+  const stored = useMemo(() => {
+    if (!loaded) return null;
+    if (engineFilter) return getDetectionHistory().find(d => d.engine === engineFilter) || null;
+    return getLastDetection();
+  }, [loaded, engineFilter]);
+  const videoBlobUrl = loaded ? getLastVideoBlobUrl() : null;
 
   // ── Submit Complaint handler ──────────────────────────────────────────────
   const handleSubmitComplaint = () => {
     if (!stored) return;
-    const result = stored.result as any;
-    const annotatedB64: string | null = result.annotated_image_base64 ?? null;
-    const detections: any[] = result.detections ?? result.violations ?? [];
-    const classes = [...new Set(detections.map((d: any) => d.class_name ?? "").filter(Boolean))];
-
-    // Use annotated image if available, otherwise nothing — still let user attach manually
-    if (annotatedB64) {
-      saveComplaintPrefill({
-        imageDataUrl: `data:image/jpeg;base64,${annotatedB64}`,
-        engine:       stored.engine,
-        fileName:     stored.fileName,
-        detectedClasses: classes,
-      });
-    }
+    prefillFromScan(stored.result as MlResultView, stored.engine, stored.fileName);
     router.push("/complaints?prefill=1");
   };
-
-  useEffect(() => {
-    const engineFilter = searchParams.get("engine");
-    if (engineFilter) {
-      const history = getDetectionHistory();
-      const filtered = history.find(d => d.engine === engineFilter);
-      setStored(filtered || null);
-    } else {
-      setStored(getLastDetection());
-    }
-    
-    setVideoBlobUrl(getLastVideoBlobUrl());
-    setLoaded(true);
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("animate-on-scroll-visible");
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      { threshold: 0.1 }
-    );
-    document.querySelectorAll("[data-animation-on-scroll]").forEach((el) => {
-      el.classList.add("animate-on-scroll-hidden");
-      observer.observe(el);
-    });
-    return () => observer.disconnect();
-  }, []);
 
   // ── Loading ──
   if (!loaded) {
     return (
       <>
         <AppHeader />
-        <main className="flex-grow pt-16 min-h-screen bg-neutral-surface flex items-center justify-center">
-          <div className="animate-spin w-8 h-8 border-4 border-brand-primary border-t-transparent rounded-full" />
+        <main id="main-content" className="flex-grow pt-16 min-h-screen bg-neutral-surface flex items-center justify-center">
+          <Loader2 className="w-7 h-7 animate-spin text-sign-green" aria-label="Loading result" />
         </main>
         <AppFooter />
       </>
@@ -145,17 +80,14 @@ function ResultsPageInner() {
     return (
       <>
         <AppHeader />
-        <main className="flex-grow pt-16 min-h-screen bg-neutral-surface flex items-center justify-center px-6">
-          <div className="text-center max-w-md">
-            <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <h1 className="font-heading text-2xl font-bold mb-3">No Results Yet</h1>
-            <p className="text-text-secondary mb-8">Run an AI detection on the upload page first to see your results here.</p>
-            <Link href="/upload" className="inline-block px-8 py-3 bg-text-primary text-white font-bold rounded-lg hover:-translate-y-0.5 transition-transform">
-              Go to Upload →
+        <main id="main-content" className="flex-grow pt-16 min-h-screen road-glow flex items-center justify-center px-4">
+          <div className="text-center max-w-md flex flex-col items-center">
+            <RoadIllustration className="w-52 h-auto mb-6" />
+            <h1 className="font-heading text-2xl font-normal tracking-tighter mb-2">No scan results yet</h1>
+            <p className="text-text-secondary mb-6">Scan a photo or video first. The result appears here, and you can turn it into a report.</p>
+            <Link href="/upload" className="inline-flex items-center gap-2 min-h-12 px-6 bg-text-primary text-neutral-background font-bold rounded-lg hover:opacity-90 transition-colors">
+              <ScanLine className="w-4 h-4" aria-hidden="true" />
+              Scan a photo
             </Link>
           </div>
         </main>
@@ -165,12 +97,12 @@ function ResultsPageInner() {
   }
 
   // ── Derive result fields ──
-  const result = stored.result as any;
+  const result = stored.result as MlResultView;
   const isTraffic  = stored.engine === "traffic";
   const isVideo    = stored.mediaType === "video";
 
   const annotatedB64: string | null = result.annotated_image_base64 ?? null;
-  const detections: (SingleDetection | TrafficDetection)[] = result.detections ?? [];
+  const detections = result.detections ?? [];
   const totalDetections: number = result.total_detections ?? 0;
   const overallPriority: string = result.road_priority ?? result.overall_priority ?? "Low";
   // For video responses, priority_counts is now at top level (same as image)
@@ -182,339 +114,318 @@ function ResultsPageInner() {
   const violations = result.violations ?? [];
   const uniqueViolations: number = result.unique_tracked_violations ?? 0;
   const totalFramesAnalyzed: number = result.total_frames_analyzed ?? 0;
-  const videoFps: number = (result.summary as any)?.fps ?? 0;
-  const videoSampleRate: number = (result.summary as any)?.sample_rate ?? 5;
+  const videoFps: number = result.summary?.fps ?? 0;
+  const videoSampleRate: number = result.summary?.sample_rate ?? 5;
+
+  const highCount = priorityCounts["High"] ?? 0;
+  const prettyClass = (name: string) => {
+    const s = name.split("_").join(" ");
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  };
+  const mediumCount = priorityCounts["Medium"] ?? 0;
+  const lowCount = priorityCounts["Low"] ?? 0;
+  const priorityTotal = highCount + mediumCount + lowCount;
+  const priorityRows = [
+    { label: "High", color: "bg-signal-red", count: highCount },
+    { label: "Medium", color: "bg-hazard", count: mediumCount },
+    { label: "Low", color: "bg-text-light", count: lowCount },
+  ];
+  // Donut segments, in the same order and colours as the legend.
+  const cutHigh = priorityTotal ? (highCount / priorityTotal) * 100 : 0;
+  const cutMedium = priorityTotal ? ((highCount + mediumCount) / priorityTotal) * 100 : 0;
+  const donut = priorityTotal
+    ? `conic-gradient(var(--color-signal-red) 0 ${cutHigh}%, var(--color-hazard) ${cutHigh}% ${cutMedium}%, var(--color-text-light) ${cutMedium}% 100%)`
+    : "var(--color-neutral-surface)";
+  const priorityKey = overallPriority.toLowerCase();
+  const priorityTone = priorityKey === "high" ? "red" as const : priorityKey === "medium" ? "amber" as const : "neutral" as const;
+  const summary = [
+    { label: "Detections", icon: ScanLine, tone: "neutral" as const, value: String(totalDetections) },
+    { label: "Average confidence", icon: Gauge, tone: "green" as const, value: `${avgConf}%` },
+    { label: "Overall priority", icon: TriangleAlert, tone: priorityTone, value: overallPriority.charAt(0).toUpperCase() + overallPriority.slice(1) },
+    ...(isVideo ? [
+      { label: "Frames analysed", icon: Film, tone: "neutral" as const, value: String(totalFramesAnalyzed) },
+      { label: "Unique violations", icon: Fingerprint, tone: "neutral" as const, value: String(uniqueViolations) },
+    ] : []),
+  ];
+  const classTotal = Object.values(classCounts).reduce((a, b) => a + b, 0);
 
   return (
     <>
       <AppHeader />
-      <main className="flex-grow pt-16">
-        <section className="pt-32 pb-24 px-6 bg-neutral-surface min-h-screen">
-          <div className="max-w-7xl mx-auto">
-
-            {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12" data-animation-on-scroll="">
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <Link href="/upload" className="text-brand-primary hover:underline text-sm font-bold flex items-center gap-1">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
-                    BACK TO UPLOAD
-                  </Link>
-                  <span className="text-gray-300">/</span>
-                  <span className="text-sm text-text-secondary font-mono">REPORT #{stored.id}</span>
-                </div>
-                <h1 className="font-heading text-4xl font-normal tracking-tighter">Detection Results</h1>
-                <p className="text-sm text-text-secondary mt-1">
-                  {stored.fileName} · {relativeTime(stored.timestamp)} · {isTraffic ? "Traffic" : "Road Hazard"} Engine
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                {/* Submit Complaint — only for road hazard detections */}
-                {!isTraffic && (
-                  <button
-                    onClick={handleSubmitComplaint}
-                    className="px-6 py-3 bg-brand-primary text-text-primary font-bold rounded-sm flex items-center gap-2 hover:opacity-90 hover:-translate-y-0.5 transition-all shadow-soft"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                    SUBMIT COMPLAINT
-                  </button>
-                )}
-                {/* Submit Complaint for traffic too */}
-                {isTraffic && (
-                  <button
-                    onClick={handleSubmitComplaint}
-                    className="px-6 py-3 bg-red-500 text-white font-bold rounded-sm flex items-center gap-2 hover:opacity-90 hover:-translate-y-0.5 transition-all shadow-soft"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                    REPORT VIOLATION
-                  </button>
-                )}
-                <button
-                  onClick={() => downloadJSON(stored.result, `sadaksathi-${stored.id}.json`)}
-                  className="px-6 py-3 bg-white border border-border-light text-text-primary font-bold rounded-sm flex items-center gap-2 hover:bg-gray-50 transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                  DOWNLOAD JSON
-                </button>
-              </div>
+      <main id="main-content" className="flex-grow pt-16 bg-neutral-surface">
+        <PageHero
+          title="Scan result"
+          top={
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <Link href="/upload" className="text-sign-green hover:underline font-bold inline-flex items-center gap-1 min-h-11">
+                <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+                Back to scan
+              </Link>
+              <span className="text-text-secondary">Result <span className="font-mono" translate="no">#{stored.id}</span></span>
             </div>
+          }
+          description={<span className="break-words"><span className="font-semibold text-text-primary">{stored.fileName}</span>, scanned {relativeTime(stored.timestamp)} for {isTraffic ? "traffic violations" : "road hazards"}</span>}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={handleSubmitComplaint}
+                className="justify-center min-h-12 px-5 bg-text-primary text-neutral-background font-bold rounded-lg flex items-center gap-2 hover:opacity-90 transition-colors"
+              >
+                <Plus className="w-4 h-4" aria-hidden="true" />
+                {isTraffic ? "Report this violation" : "Report this hazard"}
+              </button>
+              <button
+                type="button"
+                onClick={() => downloadJSON(stored.result, `sadaksathi-${stored.id}.json`)}
+                className="justify-center min-h-12 px-5 bg-surface border border-border-light text-text-primary font-bold rounded-lg flex items-center gap-2 hover:border-border-dark transition-colors"
+              >
+                <Download className="w-4 h-4" aria-hidden="true" />
+                Download data (JSON)
+              </button>
+            </>
+          }
+        />
+        <section className="py-8 md:py-12 px-4 sm:px-6 min-h-screen">
+          <div className="max-w-6xl mx-auto">
 
-            {/* Main Content */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Headline figures */}
+            <dl className={`grid grid-cols-2 gap-3 sm:gap-4 mb-6 ${isVideo ? "lg:grid-cols-5" : "lg:grid-cols-3"}`}>
+              {summary.map(({ label, icon, tone, value }, i) => (
+                <StatTile key={label} icon={icon} label={label} tone={tone} value={value} delay={i * 70}
+                  className={i === summary.length - 1 && summary.length % 2 === 1 ? "col-span-2 lg:col-span-1" : ""} />
+              ))}
+            </dl>
 
-              {/* Media + Detection Table */}
-              <div className="lg:col-span-2 space-y-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-                {/* Media Panel */}
-                <div className="bg-white rounded-2xl shadow-medium border border-border-light overflow-hidden" data-animation-on-scroll="">
-                  {/* Video Player — shown for all video uploads */}
+              {/* Media + detections */}
+              <div className="lg:col-span-2 space-y-6 min-w-0">
+
+                {/* Media panel */}
+                <div className="bg-surface rounded-xl border border-border-light elevated overflow-hidden">
                   {isVideo && videoBlobUrl ? (
-                    <div className="bg-gray-900">
+                    <div className="bg-asphalt">
                       <video
                         src={videoBlobUrl}
                         controls
                         className="w-full max-h-[520px] object-contain"
                         playsInline
                       />
-                      {/* Best annotated frame strip */}
                       {annotatedB64 && (
                         <div className="p-4 border-t border-white/10">
-                          <div className="text-[10px] text-white/50 uppercase tracking-widest mb-2 px-1">Best Detection Frame (AI Annotated)</div>
+                          <p className="text-sm text-white/75 mb-2">Clearest frame, with detections outlined</p>
+                          {/* eslint-disable-next-line @next/next/no-img-element -- dynamic data/API image */}
                           <img
                             src={`data:image/jpeg;base64,${annotatedB64}`}
-                            alt="Best annotated frame"
-                            className="w-full max-h-48 object-contain rounded-lg"
+                            alt="Video frame with detected issues outlined"
+                            className="w-full max-h-48 object-contain rounded-md"
                           />
                         </div>
                       )}
                     </div>
                   ) : (
-                    /* Image / fallback panel */
-                    <div className="bg-gray-900 aspect-video relative group overflow-hidden flex items-center justify-center">
+                    <div className="relative overflow-hidden bg-asphalt aspect-video flex items-center justify-center">
                       {annotatedB64 ? (
-                        <img
-                          src={`data:image/jpeg;base64,${annotatedB64}`}
-                          alt="AI Annotated Result"
-                          className="w-full h-full object-contain"
-                        />
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element -- dynamic data/API image */}
+                          <img
+                            src={`data:image/jpeg;base64,${annotatedB64}`}
+                            alt="Uploaded photo with detected issues outlined"
+                            className="w-full h-full object-contain"
+                          />
+                          {/* One pass of the detector's scan line when the result first appears. */}
+                          <span aria-hidden="true" className="animate-scan-once pointer-events-none absolute inset-x-0 h-0.5 bg-hazard shadow-[0_0_14px_3px_color-mix(in_srgb,var(--color-hazard)_60%,transparent)]" />
+                        </>
                       ) : (
-                        <div className="text-center text-white/40 p-8">
-                          <svg className="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                          </svg>
-                          <p className="text-sm">{isVideo ? "No hazards detected — no annotated frame to display." : "No annotated image returned."}</p>
+                        <div className="text-center text-white/75 p-8">
+                          <ImageOff className="w-10 h-10 mx-auto mb-3" aria-hidden="true" />
+                          <p className="text-sm">{isVideo ? "Nothing was detected, so there is no frame to show." : "The scan did not return a marked-up image."}</p>
                         </div>
                       )}
-
-                      {/* Live Analysis Overlay */}
-                      {totalDetections > 0 && (
-                        <div className="absolute top-4 right-4 bg-gray-950/80 backdrop-blur p-4 rounded-lg border border-white/10 text-white">
-                          <div className="text-[10px] opacity-60 uppercase mb-2">Analysis Summary</div>
-                          <div className="space-y-1">
-                            <div className="flex justify-between gap-8 text-xs"><span>Detections:</span><span className="font-bold text-brand-primary">{String(totalDetections).padStart(2, "00")}</span></div>
-                            <div className="flex justify-between gap-8 text-xs"><span>Avg Confidence:</span><span className="font-bold text-brand-primary">{avgConf}%</span></div>
-                            {isVideo && <div className="flex justify-between gap-8 text-xs"><span>Unique Violations:</span><span className="font-bold text-red-400">{uniqueViolations}</span></div>}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Analysis Overlay for video-with-player */}
-                  {isVideo && videoBlobUrl && totalDetections > 0 && (
-                    <div className="px-6 py-3 bg-gray-950 flex flex-wrap gap-6 text-white text-xs border-t border-white/10">
-                      <span><span className="opacity-50 mr-2">Detections</span><span className="font-bold text-brand-primary">{totalDetections}</span></span>
-                      <span><span className="opacity-50 mr-2">Avg Confidence</span><span className="font-bold text-brand-primary">{avgConf}%</span></span>
-                      <span><span className="opacity-50 mr-2">Frames Analyzed</span><span className="font-bold">{totalFramesAnalyzed}</span></span>
-                      <span><span className="opacity-50 mr-2">Overall Priority</span><span className={`font-bold uppercase ${overallPriority === "High" ? "text-red-400" : overallPriority === "Medium" ? "text-yellow-400" : "text-green-400"}`}>{overallPriority}</span></span>
                     </div>
                   )}
                 </div>
 
-                {/* Video Stats Panel — Road Hazard video mode */}
+                {/* Video stats — road hazard video mode */}
                 {isVideo && !isTraffic && (
-                  <div className="bg-white rounded-2xl shadow-medium border border-border-light overflow-hidden" data-animation-on-scroll="">
-                    <div className="px-6 py-4 border-b border-border-light bg-neutral-surface">
-                      <h3 className="font-heading font-bold">Video Analysis Summary</h3>
+                  <div className="bg-surface rounded-xl border border-border-light elevated overflow-hidden">
+                    <div className="px-4 sm:px-6 py-4 border-b border-border-light">
+                      <h2 className="font-heading font-bold">Video summary</h2>
                     </div>
-                    <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
+                    <dl className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border-light">
                       {[
-                        { label: "Frames Analyzed", value: String(totalFramesAnalyzed) },
-                        { label: "Total Detections", value: String(totalDetections) },
-                        { label: "Frame Sample Rate", value: `Every ${videoSampleRate}th` },
-                        { label: "Source FPS", value: videoFps > 0 ? `${videoFps.toFixed(1)} fps` : "—" },
+                        { label: "Frames analysed", value: String(totalFramesAnalyzed) },
+                        { label: "Detections", value: String(totalDetections) },
+                        { label: "Frames sampled", value: `Every ${videoSampleRate}th` },
+                        { label: "Source frame rate", value: videoFps > 0 ? `${videoFps.toFixed(1)} fps` : "–" },
                       ].map(({ label, value }) => (
-                        <div key={label} className="text-center">
-                          <div className="text-2xl font-bold font-heading text-text-primary">{value}</div>
-                          <div className="text-xs text-text-secondary mt-1 uppercase tracking-wide">{label}</div>
+                        <div key={label} className="bg-surface px-4 py-4">
+                          <dt className="text-sm text-text-secondary">{label}</dt>
+                          <dd className="text-2xl font-bold font-heading tracking-tight tabular-nums mt-1">{value}</dd>
                         </div>
                       ))}
-                    </div>
-                    {Object.keys(classCounts).length > 0 && (
-                      <div className="px-6 pb-6">
-                        <div className="text-xs font-mono text-text-secondary uppercase mb-3">Class Breakdown Across All Frames</div>
-                        <div className="space-y-2">
-                          {Object.entries(classCounts).map(([cls, count]) => (
-                            <div key={cls} className="flex items-center gap-3">
-                              <div className="flex-1 text-sm capitalize">{cls.split("_").join(" ")}</div>
-                              <div className="w-32 h-2 bg-neutral-surface rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-brand-primary rounded-full transition-all duration-700"
-                                  style={{ width: totalDetections > 0 ? `${(count / totalDetections) * 100}%` : "0%" }}
-                                />
-                              </div>
-                              <div className="text-sm font-bold w-8 text-right">{count}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    </dl>
                   </div>
                 )}
 
-                {/* Detection Table — Image mode */}
+                {/* Detection cards — image mode */}
                 {!isVideo && detections.length > 0 && (
-                  <div className="bg-white rounded-2xl shadow-medium border border-border-light overflow-hidden" data-animation-on-scroll="">
-                    <div className="px-6 py-4 border-b border-border-light bg-neutral-surface">
-                      <h3 className="font-heading font-bold">Detailed Detection List ({totalDetections})</h3>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left">
-                        <thead>
-                          <tr className="text-xs font-mono text-text-secondary uppercase border-b border-border-light">
-                            <th className="px-6 py-4">ID</th>
-                            <th className="px-6 py-4">Class</th>
-                            <th className="px-6 py-4">Priority</th>
-                            <th className="px-6 py-4">Confidence</th>
-                            <th className="px-6 py-4">BBox</th>
-                            {isTraffic && <th className="px-6 py-4">Plate OCR</th>}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border-light">
-                          {detections.map((det: any, idx: number) => (
-                            <tr key={idx} className="hover:bg-neutral-surface transition-colors">
-                              <td className="px-6 py-4 font-mono text-sm">#{String(det.id).padStart(3, "0")}</td>
-                              <td className="px-6 py-4 text-sm font-semibold">{det.display_name ?? det.class_name.split("_").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}</td>
-                              <td className="px-6 py-4">
-                                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${priorityBadge(det.priority)}`}>{det.priority}</span>
-                              </td>
-                              <td className="px-6 py-4 text-sm">{(det.confidence * 100).toFixed(1)}%</td>
-                              <td className="px-6 py-4 text-xs font-mono text-text-secondary">
-                                ({det.bbox.x1},{det.bbox.y1}) → ({det.bbox.x2},{det.bbox.y2})
-                              </td>
-                              {isTraffic && (
-                                <td className="px-6 py-4">
-                                  {det.plate_text ? (
-                                    <span className="text-xs font-mono bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded border border-yellow-300">{det.plate_text}</span>
-                                  ) : (
-                                    <span className="text-xs text-text-secondary">—</span>
-                                  )}
-                                </td>
-                              )}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                  <section aria-labelledby="detections-title">
+                    <h2 id="detections-title" className="font-heading font-bold text-lg mb-3">Everything detected ({totalDetections})</h2>
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                      {detections.map((det, idx) => (
+                        <Reveal as="li" key={idx} delay={Math.min(idx, 6) * 70}>
+                          <DetectionCard
+                            title={det.display_name ?? prettyClass(det.class_name)}
+                            priority={det.priority}
+                            confidence={det.confidence}
+                            showPlate={isTraffic}
+                            plate={det.plate_text}
+                            meta={
+                              <>
+                                <span className="font-mono">#{String(det.id).padStart(3, "0")}</span>
+                                <span className="tabular-nums">, at ({det.bbox.x1}, {det.bbox.y1}) to ({det.bbox.x2}, {det.bbox.y2}) px</span>
+                              </>
+                            }
+                          />
+                        </Reveal>
+                      ))}
+                    </ul>
+                  </section>
                 )}
 
-                {/* Unique Violations Table — Video mode */}
+                {/* Unique violations — video mode */}
                 {isVideo && violations.length > 0 && (
-                  <div className="bg-white rounded-2xl shadow-medium border border-border-light overflow-hidden" data-animation-on-scroll="">
-                    <div className="px-6 py-4 border-b border-border-light bg-neutral-surface">
-                      <h3 className="font-heading font-bold">Unique Tracked Violations ({uniqueViolations})</h3>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left">
-                        <thead>
-                          <tr className="text-xs font-mono text-text-secondary uppercase border-b border-border-light">
-                            <th className="px-6 py-4">Track ID</th>
-                            <th className="px-6 py-4">Violation</th>
-                            <th className="px-6 py-4">Priority</th>
-                            <th className="px-6 py-4">First Seen</th>
-                            <th className="px-6 py-4">Confidence</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border-light">
-                          {violations.map((v: any, idx: number) => (
-                            <tr key={idx} className="hover:bg-neutral-surface transition-colors">
-                              <td className="px-6 py-4 font-mono text-sm">#{v.track_id}</td>
-                              <td className="px-6 py-4 text-sm font-semibold">{v.display_name}</td>
-                              <td className="px-6 py-4">
-                                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${priorityBadge(v.priority)}`}>{v.priority}</span>
-                              </td>
-                              <td className="px-6 py-4 text-sm text-text-secondary">{v.first_seen_sec.toFixed(1)}s</td>
-                              <td className="px-6 py-4 text-sm">{(v.confidence * 100).toFixed(1)}%</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                  <section aria-labelledby="violations-title">
+                    <h2 id="violations-title" className="font-heading font-bold text-lg mb-3">Unique violations tracked ({uniqueViolations})</h2>
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                      {violations.map((v, idx) => (
+                        <Reveal as="li" key={idx} delay={Math.min(idx, 6) * 70}>
+                          <DetectionCard
+                            title={v.display_name}
+                            priority={v.priority}
+                            confidence={v.confidence}
+                            meta={<>Track <span className="font-mono">#{v.track_id}</span>, first seen at {v.first_seen_sec.toFixed(1)}s</>}
+                            showPlate={Boolean(v.plate_text)}
+                            plate={v.plate_text}
+                          />
+                        </Reveal>
+                      ))}
+                    </ul>
+                  </section>
                 )}
 
-                {/* All Clear State */}
+                {/* Nothing found */}
                 {totalDetections === 0 && (
-                  <div className="bg-white rounded-2xl shadow-medium border border-border-light p-12 text-center" data-animation-on-scroll="">
-                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-                    </div>
-                    <h3 className="text-lg font-bold mb-2">All Clear</h3>
-                    <p className="text-text-secondary">No issues or violations were detected in this media.</p>
+                  <div className="bg-surface rounded-xl border border-border-light elevated">
+                    <EmptyState
+                      headingLevel={2}
+                      title="Nothing found"
+                      action={
+                        <button type="button" onClick={handleSubmitComplaint} className="inline-flex items-center min-h-11 px-5 border border-border-light rounded-lg text-sm font-bold hover:border-border-dark transition-colors">
+                          Report a hazard
+                        </button>
+                      }
+                    >
+                      The AI did not detect any hazards or violations. If you can see a problem, report it yourself.
+                    </EmptyState>
                   </div>
                 )}
               </div>
 
-              {/* Sidebar */}
-              <div className="space-y-8">
+              {/* Side column */}
+              <div className="space-y-6">
 
-                {/* Priority Summary */}
-                <div className="bg-white p-6 rounded-2xl shadow-medium border border-border-light" data-animation-on-scroll="">
-                  <h3 className="font-heading font-bold mb-5">Priority Breakdown</h3>
-                  <div className="space-y-4">
-                    {[
-                      { label: "High", color: "bg-red-500",    count: priorityCounts["High"] ?? 0 },
-                      { label: "Medium", color: "bg-yellow-400", count: priorityCounts["Medium"] ?? 0 },
-                      { label: "Low", color: "bg-green-400",   count: priorityCounts["Low"] ?? 0 },
-                    ].map(({ label, color, count }) => (
-                      <div key={label}>
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2 text-sm font-medium">
-                            <div className={`w-3 h-3 rounded-full ${color}`} />
-                            {label}
+                {/* Priority breakdown: donut + legend */}
+                <div className="animate-rise [animation-delay:150ms] bg-surface rounded-xl border border-border-light elevated overflow-hidden">
+                  {highCount > 0 && <div className="hazard-stripe animate-stripe-slide h-1.5" aria-hidden="true" />}
+                  <div className="p-5">
+                    <h2 className="font-heading font-bold mb-4">Priority breakdown</h2>
+                    <div className="flex items-center gap-5">
+                      <div
+                        className="animate-pop [animation-delay:300ms] relative w-32 h-32 flex-shrink-0 rounded-full"
+                        style={{ background: donut }}
+                        role="img"
+                        aria-label={`${highCount} high, ${mediumCount} medium and ${lowCount} low priority detections`}
+                      >
+                        <div className="absolute inset-3.5 rounded-full bg-surface grid place-items-center text-center">
+                          <div>
+                            <div className="font-heading text-3xl font-normal tracking-tighter tabular-nums leading-none">{priorityTotal}</div>
+                            <div className="text-xs text-text-secondary mt-1">detections</div>
                           </div>
-                          <span className="text-sm font-bold">{count}</span>
-                        </div>
-                        <div className="h-1.5 bg-neutral-surface rounded-full overflow-hidden">
-                          <div
-                            className={`h-full ${color} transition-all duration-700`}
-                            style={{ width: totalDetections > 0 ? `${(count / totalDetections) * 100}%` : "0%" }}
-                          />
                         </div>
                       </div>
-                    ))}
-                  </div>
+                      <ul className="flex-1 min-w-0 space-y-3">
+                        {priorityRows.map(({ label, color, count }) => (
+                          <li key={label}>
+                            <div className="flex items-center justify-between mb-1 text-sm">
+                              <span className="flex items-center gap-2 font-medium">
+                                <span className={`w-2.5 h-2.5 rounded-full ${color}`} aria-hidden="true" />
+                                {label}
+                              </span>
+                              <span className="font-bold tabular-nums">{count}</span>
+                            </div>
+                            <div className="h-1.5 bg-neutral-surface rounded-full overflow-hidden" aria-hidden="true">
+                              <div
+                                className={`h-full rounded-full origin-left animate-[bar-fill_700ms_var(--ease-out-sign)_both] ${color}`}
+                                style={{ width: priorityTotal > 0 ? `${(count / priorityTotal) * 100}%` : "0%" }}
+                              />
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
 
-                  <div className="mt-6 pt-5 border-t border-border-light">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm text-text-secondary">Overall Priority</span>
-                      <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${priorityBadge(overallPriority)}`}>{overallPriority}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-text-secondary">Avg Confidence</span>
-                      <span className="text-sm font-bold">{avgConf}%</span>
-                    </div>
+                    <dl className="mt-5 pt-4 border-t border-border-light space-y-2 text-sm">
+                      <div className="flex items-center justify-between">
+                        <dt className="text-text-secondary">Overall priority</dt>
+                        <dd className="animate-pop [animation-delay:250ms]"><PriorityBadge priority={overallPriority} /></dd>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <dt className="text-text-secondary">Average confidence</dt>
+                        <dd className="font-bold tabular-nums">{avgConf}%</dd>
+                      </div>
+                    </dl>
                   </div>
                 </div>
 
-                {/* Class Counts */}
+                {/* Class counts */}
                 {Object.keys(classCounts).length > 0 && (
-                  <div className="bg-white p-6 rounded-2xl shadow-medium border border-border-light" data-animation-on-scroll="">
-                    <h3 className="font-heading font-bold mb-5">Detected Classes</h3>
-                    <div className="space-y-3">
+                  <div className="bg-surface p-5 rounded-xl border border-border-light elevated">
+                    <h2 className="font-heading font-bold mb-4">{isVideo ? "Detected types, across all frames" : "Detected types"}</h2>
+                    <ul className="space-y-3">
                       {Object.entries(classCounts).map(([cls, count]) => (
-                        <div key={cls} className="flex items-center justify-between text-sm">
-                          <span className="text-text-secondary capitalize">{cls.split("_").join(" ")}</span>
-                          <span className="font-bold">{count}</span>
-                        </div>
+                        <li key={cls}>
+                          <div className="flex items-center justify-between gap-3 mb-1 text-sm">
+                            <span className="min-w-0 break-words">{prettyClass(cls)}</span>
+                            <span className="font-bold tabular-nums">{count}</span>
+                          </div>
+                          <div className="h-1.5 bg-neutral-surface rounded-full overflow-hidden" aria-hidden="true">
+                            <div
+                              className="h-full rounded-full bg-sign-green origin-left animate-[bar-fill_700ms_var(--ease-out-sign)_both]"
+                              style={{ width: classTotal > 0 ? `${(count / classTotal) * 100}%` : "0%" }}
+                            />
+                          </div>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   </div>
                 )}
 
-                {/* AI Advice */}
-                <div className="bg-text-primary text-white p-6 rounded-2xl shadow-medium" data-animation-on-scroll="">
-                  <h3 className="font-heading font-bold mb-4">AI Dispatch Advice</h3>
-                  <p className="text-sm opacity-70 mb-6 leading-relaxed">
+                {/* What next */}
+                <div className="relative overflow-hidden bg-asphalt text-white p-5 pt-6 rounded-xl elevated">
+                  <h2 className="font-heading font-bold mb-2">What happens next</h2>
+                  <p className="text-sm text-white/80 mb-5 leading-relaxed">
                     {totalDetections === 0
-                      ? "No issues detected. No action required at this time."
-                      : (priorityCounts["High"] ?? 0) > 0
-                      ? `${priorityCounts["High"]} high-priority issue(s) detected. Dispatch a Tier-1 crew immediately. Schedule medium and low priority items for routine maintenance.`
-                      : "No high-priority hazards. Schedule detected issues for routine maintenance."}
+                      ? "Nothing was detected. If you can still see a problem, report it yourself."
+                      : highCount > 0
+                      ? `${highCount} high-priority issue${highCount !== 1 ? "s" : ""} found. Report it so the ${isTraffic ? "traffic" : "municipal"} department can act quickly.`
+                      : `No high-priority issues. Reporting still helps the ${isTraffic ? "traffic" : "municipal"} department plan repairs.`}
                   </p>
-                  <Link href="/upload" className="block w-full py-3 bg-brand-primary text-text-primary font-bold rounded-md hover:scale-[1.02] transition-transform text-center">
-                    Run New Analysis
+                  <Link href="/upload" className="flex items-center justify-center gap-2 w-full min-h-11 border border-white/40 text-white font-bold rounded-lg hover:bg-white/10 transition-colors text-sm">
+                    <ScanLine className="w-4 h-4" aria-hidden="true" />
+                    Scan another file
                   </Link>
                 </div>
               </div>

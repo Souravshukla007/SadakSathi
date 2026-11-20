@@ -1,0 +1,167 @@
+/*
+ * Guide scene motion. Every scene loops on the same 6 s cycle.
+ * Convention: each keyframe's 0% and 100% hold the finished, informative frame and the
+ * "reset" happens in the first few percent. So a paused, off-screen or reduced-motion
+ * scene (the global rule runs one near-zero iteration with fill both) shows the result.
+ */
+
+/* Pause button (WCAG 2.2.2) and off-screen scenes (IntersectionObserver) both stop motion. */
+.root[data-paused] .scene *,
+.scene[data-offscreen] * {
+    animation-play-state: paused !important;
+}
+
+.loop {
+    animation-duration: 6s;
+    animation-iteration-count: infinite;
+    animation-fill-mode: both;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Typing: text is revealed left to right in steps. */
+.typed {
+    composes: loop;
+    animation-timing-function: steps(14, end);
+}
+.typeEarly { composes: typed; animation-name: type-early; }
+.typeMid { composes: typed; animation-name: type-mid; }
+.typeLate { composes: typed; animation-name: type-late; }
+
+@keyframes type-early {
+    0%, 40%, 100% { clip-path: inset(0 0 0 0); }
+    5%, 12% { clip-path: inset(0 100% 0 0); }
+}
+@keyframes type-mid {
+    0%, 60%, 100% { clip-path: inset(0 0 0 0); }
+    5%, 38% { clip-path: inset(0 100% 0 0); }
+}
+@keyframes type-late {
+    0%, 72%, 100% { clip-path: inset(0 0 0 0); }
+    5%, 52% { clip-path: inset(0 100% 0 0); }
+}
+
+/* A button being pressed late in the cycle. */
+.press { composes: loop; animation-name: press; }
+@keyframes press {
+    0%, 78%, 88%, 100% { transform: none; }
+    83% { transform: scale(0.94); }
+}
+
+.pressEarly { composes: loop; animation-name: press-early; }
+@keyframes press-early {
+    0%, 46%, 56%, 100% { transform: none; }
+    51% { transform: scale(0.94); }
+}
+
+/* Generic appear: off during the reset, pops in at a set point. */
+.popAt20 { composes: loop; animation-name: pop-20; }
+.popAt45 { composes: loop; animation-name: pop-45; }
+.popAt50 { composes: loop; animation-name: pop-50; }
+.popAt56 { composes: loop; animation-name: pop-56; }
+.popAt62 { composes: loop; animation-name: pop-62; }
+.popAt88 { composes: loop; animation-name: pop-88; }
+
+@keyframes pop-20 { 0%, 26%, 100% { opacity: 1; transform: none; } 5%, 20% { opacity: 0; transform: scale(0.9); } }
+@keyframes pop-45 { 0%, 51%, 100% { opacity: 1; transform: none; } 5%, 45% { opacity: 0; transform: scale(0.9); } }
+@keyframes pop-50 { 0%, 56%, 100% { opacity: 1; transform: none; } 5%, 50% { opacity: 0; transform: scale(0.9); } }
+@keyframes pop-56 { 0%, 62%, 100% { opacity: 1; transform: none; } 5%, 56% { opacity: 0; transform: scale(0.9); } }
+@keyframes pop-62 { 0%, 68%, 100% { opacity: 1; transform: none; } 5%, 62% { opacity: 0; transform: scale(0.9); } }
+@keyframes pop-88 { 0%, 93%, 100% { opacity: 1; transform: none; } 5%, 88% { opacity: 0; transform: translateY(6px); } }
+
+/* Crossfade pairs: "before" shows until a point, "after" (the final state) from then on. */
+.beforeAt25 { composes: loop; animation-name: before-25; }
+.afterAt25 { composes: loop; animation-name: after-25; }
+.beforeAt35 { composes: loop; animation-name: before-35; }
+.afterAt35 { composes: loop; animation-name: after-35; }
+.beforeAt68 { composes: loop; animation-name: before-68; }
+.afterAt68 { composes: loop; animation-name: after-68; }
+
+@keyframes before-25 { 0%, 100% { opacity: 0; } 5%, 22% { opacity: 1; } 26% { opacity: 0; } }
+@keyframes after-25 { 0%, 26%, 100% { opacity: 1; } 5%, 22% { opacity: 0; } }
+@keyframes before-35 { 0%, 100% { opacity: 0; } 5%, 32% { opacity: 1; } 36% { opacity: 0; } }
+@keyframes after-35 { 0%, 36%, 100% { opacity: 1; } 5%, 32% { opacity: 0; } }
+@keyframes before-68 { 0%, 100% { opacity: 0; } 5%, 66% { opacity: 1; } 69% { opacity: 0; } }
+@keyframes after-68 { 0%, 69%, 100% { opacity: 1; } 5%, 66% { opacity: 0; } }
+
+/* Camera flash, then the photo lands in the upload box. */
+.flash { composes: loop; animation-name: flash; animation-timing-function: ease-out; }
+@keyframes flash {
+    0%, 10%, 24%, 100% { opacity: 0; }
+    13% { opacity: 0.9; }
+}
+.photoLand { composes: loop; animation-name: photo-land; }
+@keyframes photo-land {
+    0%, 40%, 100% { opacity: 1; transform: none; }
+    5%, 16% { opacity: 0; transform: translateY(-36px) scale(1.06) rotate(-3deg); }
+    34% { opacity: 1; transform: translateY(3px) rotate(0.5deg); }
+}
+
+/* Scan line sweeps the photo once, then boxes pop in. */
+.scanLine { composes: loop; animation-name: scan-line; animation-timing-function: ease-in-out; }
+@keyframes scan-line {
+    0%, 44%, 100% { top: calc(100% - 2px); opacity: 0; }
+    5% { top: 0; opacity: 0; }
+    8% { top: 0; opacity: 1; }
+    40% { top: calc(100% - 2px); opacity: 1; }
+}
+
+/* Location pin drops onto the map. */
+.pinDrop { composes: loop; animation-name: pin-drop-loop; }
+@keyframes pin-drop-loop {
+    0%, 78%, 100% { opacity: 1; transform: none; }
+    5%, 62% { opacity: 0; transform: translateY(-28px); }
+    72% { opacity: 1; transform: translateY(3px); }
+}
+
+/* Duplicate check: a new pin lands inside the 100 m circle and merges into the earlier one. */
+.pinMerge { composes: loop; animation-name: pin-merge; }
+@keyframes pin-merge {
+    0%, 64%, 100% { opacity: 0; transform: translate(-44px, -26px) scale(0.6); }
+    5%, 12% { opacity: 0; transform: translateY(-28px); }
+    22% { opacity: 1; transform: translateY(3px); }
+    26%, 46% { opacity: 1; transform: none; }
+    60% { opacity: 0.6; transform: translate(-44px, -26px) scale(0.8); }
+}
+
+/* Status steps Submitted, Approved, Completed. */
+.pillSubmitted { composes: loop; animation-name: pill-1; }
+.pillApproved { composes: loop; animation-name: pill-2; }
+.pillCompleted { composes: loop; animation-name: pill-3; }
+@keyframes pill-1 { 0%, 34%, 100% { opacity: 0; } 5%, 31% { opacity: 1; } }
+@keyframes pill-2 { 0%, 31%, 64%, 100% { opacity: 0; } 34%, 61% { opacity: 1; } }
+@keyframes pill-3 {
+    0%, 70%, 100% { opacity: 1; transform: none; }
+    5%, 61% { opacity: 0; transform: scale(0.9); }
+    64% { opacity: 1; transform: scale(1.08); }
+}
+.progress { composes: loop; animation-name: progress; transform-origin: left center; }
+@keyframes progress {
+    0%, 66%, 100% { transform: scaleX(1); }
+    5%, 31% { transform: scaleX(0); }
+    37%, 61% { transform: scaleX(0.5); }
+}
+
+/* Staff list: a row is picked out before "Manage" is pressed. */
+.rowPick { composes: loop; animation-name: row-pick; }
+@keyframes row-pick {
+    0%, 52%, 100% { background-color: rgb(79 93 176 / 0.08); box-shadow: inset 3px 0 0 #4F5DB0; }
+    5%, 42% { background-color: transparent; box-shadow: inset 3px 0 0 transparent; }
+}
+
+/* Checkbox tick. */
+.tick { composes: loop; animation-name: tick; }
+@keyframes tick {
+    0%, 32%, 100% { background-color: #4F5DB0; border-color: #4F5DB0; }
+    5%, 28% { background-color: #fff; border-color: #5B616B; }
+}
+
+/* A disabled "Save changes" becomes usable once the resolution photo is in. */
+.enableAt45 { composes: loop; animation-name: enable-45; }
+@keyframes enable-45 { 0%, 46%, 78%, 88%, 100% { opacity: 1; transform: none; } 5%, 42% { opacity: 0.45; } 83% { transform: scale(0.94); } }
+
+/* Challan stamp lands on the violation. */
+.stamp { composes: loop; animation-name: stamp-loop; }
+@keyframes stamp-loop {
+    0%, 68%, 100% { opacity: 1; transform: rotate(-8deg); }
+    5%, 58% { opacity: 0; transform: scale(1.8) rotate(-14deg); animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); }
+}

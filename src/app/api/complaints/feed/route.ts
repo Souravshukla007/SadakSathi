@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { verifyToken } from '@/lib/jwt';
 import { prisma } from '@/lib/prisma';
+import { mediaUrlsFor, omitMedia } from '@/lib/complaintMedia';
+import { getSessionUser } from '@/lib/session';
+import { ComplaintStatus } from '@prisma/client';
+import { haversineDistance } from '@/lib/duplicateDetection';
 
 export async function GET(req: NextRequest) {
     try {
@@ -10,16 +12,14 @@ export async function GET(req: NextRequest) {
         const search = searchParams.get('search') || '';
         const status = searchParams.get('status') || ''; // e.g. Submitted | Approved | Completed
 
+        // "Near me": ?near=<lat>,<lng>&radius=<km> (default 5 km, max 50) → only nearby reports, closest first.
+        const [nLat, nLng] = (searchParams.get('near') ?? '').split(',').map(Number);
+        const near = Number.isFinite(nLat) && Number.isFinite(nLng) && Math.abs(nLat) <= 90 && Math.abs(nLng) <= 180
+            ? { lat: nLat, lng: nLng } : null;
+        const radiusKm = Math.min(Math.max(Number(searchParams.get('radius')) || 5, 0.5), 50);
+
         // Try to get the current user (optional — feed is public)
-        let currentUserId: string | null = null;
-        const cookieStore = await cookies();
-        const token = cookieStore.get('auth_token')?.value;
-        if (token) {
-            const payload = await verifyToken(token);
-            if (payload && payload.id) {
-                currentUserId = payload.id as string;
-            }
-        }
+        const currentUserId = (await getSessionUser())?.id ?? null;
 
         const orderBy =
             sort === 'upvotes'
@@ -31,8 +31,17 @@ export async function GET(req: NextRequest) {
         // Build where clause
         const where: Record<string, unknown> = { isDuplicate: false };
 
-        if (status) {
+        // Ignore unknown values instead of letting Prisma throw on the enum
+        if ((Object.values(ComplaintStatus) as string[]).includes(status)) {
             where.status = status;
+        }
+
+        if (near) {
+            // Bounding box in the query (cheap), exact distance below.
+            const dLat = radiusKm / 111.32;
+            const dLng = dLat / Math.max(Math.cos((near.lat * Math.PI) / 180), 0.01);
+            where.latitude = { gte: near.lat - dLat, lte: near.lat + dLat };
+            where.longitude = { gte: near.lng - dLng, lte: near.lng + dLng };
         }
 
         if (search) {
@@ -45,9 +54,13 @@ export async function GET(req: NextRequest) {
         }
 
         const complaints = await prisma.complaint.findMany({
+            omit: omitMedia,
             where,
             orderBy,
-            take: 50,
+            // Near me: rows are cut only AFTER sorting by distance (below), so a close old report isn't lost
+            // behind 200 newer far ones. shortcut: caps the box at 2,000 rows (media omitted, so small);
+            // past that many open reports in one area, sort by distance in SQL instead.
+            take: near ? 2000 : 50,
             include: {
                 user:   { select: { fullName: true } },
                 _count: { select: { upvotes: true } },
@@ -61,8 +74,18 @@ export async function GET(req: NextRequest) {
                     : {}),
             },
         });
+        const urls = await mediaUrlsFor(complaints.map(c => c.id));
 
-        const result = complaints.map((c: any) => ({
+        const withDistance = complaints.map((c) => ({
+            c,
+            distanceKm: near && c.latitude != null && c.longitude != null
+                ? haversineDistance(near.lat, near.lng, c.latitude, c.longitude) / 1000 : null,
+        }));
+        const rows = near
+            ? withDistance.filter(r => r.distanceKm != null && r.distanceKm <= radiusKm).sort((a, b) => a.distanceKm! - b.distanceKm!).slice(0, 50)
+            : withDistance;
+
+        const result = rows.map(({ c, distanceKm }) => ({
             id:           c.id,
             issueType:    c.issueType,
             description:  c.description,
@@ -71,13 +94,14 @@ export async function GET(req: NextRequest) {
             state:        c.state,
             status:       c.status,
             remarks:      c.remarks,
-            evidenceUrl:  c.evidenceUrl,
+            evidenceUrl:  urls(c.id).evidenceUrl,
             latitude:     c.latitude,
             longitude:    c.longitude,
             createdAt:    c.createdAt,
             upvoteCount:  c._count.upvotes,
             submittedBy:  c.user?.fullName || 'Anonymous',
             hasVoted:     currentUserId ? (c.upvotes?.length ?? 0) > 0 : false,
+            distanceKm:   distanceKm == null ? null : Math.round(distanceKm * 10) / 10,
         }));
 
         return NextResponse.json(result);

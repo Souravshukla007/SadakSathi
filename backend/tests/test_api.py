@@ -99,3 +99,51 @@ def test_traffic_detection_with_actual_image(client):
     # We know previously that road_safety_2 triggered violations (TripleRiding)
     # The endpoint should return a list of detections
     assert isinstance(data["detections"], list)
+
+
+def test_stats_routes_removed(client):
+    """The per-process /stats counters had no readers and were removed."""
+    assert client.get("/stats").status_code == 404
+    assert client.post("/stats/reset").status_code in (404, 405)
+
+
+def test_api_key_required_when_configured(client, monkeypatch):
+    from config import get_settings
+
+    monkeypatch.setattr(get_settings(), "ML_API_KEY", "s3cret")
+    assert client.post("/duplicate/check", json={}).status_code == 401
+    assert client.post("/duplicate/check", json={}, headers={"X-API-Key": "wrong"}).status_code == 401
+    # With the right key the request reaches validation (422 for the empty body), and /health stays open.
+    assert client.post("/duplicate/check", json={}, headers={"X-API-Key": "s3cret"}).status_code == 422
+    assert client.get("/health").status_code == 200
+
+
+def test_detect_image_returns_every_detection(client, monkeypatch):
+    """The image handler passes all detections through (runs in the threadpool, no stats side effects)."""
+    import types
+
+    det = {
+        "class_name": "pothole", "confidence": 0.9,
+        "bbox": {"x1": 0, "y1": 0, "x2": 1, "y2": 1},
+        "area_pixels": 1, "area_ratio": 0.1, "depth_score": 0.1, "priority": "High",
+    }
+    result = {
+        "success": True, "total_detections": 3,
+        "detections": [dict(det, id=i) for i in range(3)],
+        "road_priority": "High", "priority_counts": {"High": 3},
+    }
+    fake = types.ModuleType("ml.detection")
+    fake.assess_road_image = lambda *a, **k: (result, None)
+    fake.encode_image_to_base64 = lambda img: None
+    fake.get_device = lambda: "cpu"
+    monkeypatch.setitem(sys.modules, "ml.detection", fake)
+    monkeypatch.setattr(client.app.state, "model", object(), raising=False)
+
+    response = client.post("/detect/image", files={"file": ("x.jpg", b"fake", "image/jpeg")})
+    assert response.status_code == 200
+    assert [d["class_name"] for d in response.json()["detections"]] == ["pothole"] * 3
+
+
+def test_health_reports_ocr_false_when_loader_failed(client, monkeypatch):
+    monkeypatch.setattr(client.app.state, "ocr_reader", False, raising=False)
+    assert client.get("/health").json()["ocr_loaded"] is False

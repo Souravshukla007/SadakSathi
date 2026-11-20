@@ -1,16 +1,17 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { TRAFFIC_ISSUE_TYPES } from '@/lib/traffic';
+import { mediaUrlsFor, omitMedia } from '@/lib/complaintMedia';
+import { requireUser, STAFF } from '@/lib/session';
 
-const TRAFFIC_ISSUE_TYPES = [
-    'No Helmet',
-    'Triple Riding',
-    'Wrong Side Driving',
-    'Signal Jumping',
-];
 
 export async function GET() {
     try {
+        const session = await requireUser(STAFF.traffic);
+        if (session instanceof NextResponse) return session;
+
         const complaints = await prisma.complaint.findMany({
+            omit: omitMedia,
             where: {
                 issueType: { in: TRAFFIC_ISSUE_TYPES },
             },
@@ -20,8 +21,9 @@ export async function GET() {
                 user: { select: { fullName: true } },
             },
         });
+        const urls = await mediaUrlsFor(complaints.map(c => c.id));
 
-        const result = complaints.map((c: any) => ({
+        const result = complaints.map((c) => ({
             id: c.id,
             issueType: c.issueType,
             description: c.description,
@@ -29,7 +31,7 @@ export async function GET() {
             city: c.city,
             state: c.state,
             status: c.status,
-            evidenceUrl: c.evidenceUrl,
+            evidenceUrl: urls(c.id).evidenceUrl,
             createdAt: c.createdAt,
             submittedBy: c.user?.fullName || 'Anonymous',
             isDuplicate: c.isDuplicate,

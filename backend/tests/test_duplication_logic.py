@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from collections import defaultdict
 
 from ml.duplication import CivicIssueDuplicateDetector, _decode_base64_image
@@ -25,7 +26,8 @@ def build_detector() -> CivicIssueDuplicateDetector:
     detector.image_kmeans = None
     detector.image_clusters = []
     detector.location_clusters = defaultdict(list)
-    detector.issue_type_clusters = defaultdict(list)
+    detector.location_grid = defaultdict(list)
+    detector._add_lock = threading.Lock()
     detector.xgb_model = None
     detector.scaler = None
     detector.has_enough_data_for_xgboost = False
@@ -63,6 +65,7 @@ def test_process_json_input_includes_original_id_and_truncates_text() -> None:
             }
         ],
         0.9234,
+        [],
     )
 
     response = detector.process_json_input(
@@ -74,3 +77,15 @@ def test_process_json_input_includes_original_id_and_truncates_text() -> None:
     assert response["original_report_id"] == "cmp-1"
     assert response["similar_reports"][0]["text"].endswith("...")
     assert len(response["similar_reports"][0]["text"]) == 103
+
+
+def test_stored_reports_keep_a_summary_not_the_photo() -> None:
+    # Each photo arrives as a data URL of up to 4 MB; keeping it would grow memory by gigabytes.
+    detector = build_detector()
+    photo = "data:image/jpeg;base64," + "A" * 5000
+
+    index = detector.add_report({"id": "cmp-7", "text": "Pothole", "location": [18.52, 73.85], "issue_type": "pothole", "image_base64": photo})
+
+    assert index == 0
+    assert detector.reports_db[0] == {"id": "cmp-7", "text": "Pothole", "location": [18.52, 73.85], "issue_type": "pothole"}
+    assert len(detector.image_features_db) == len(detector.reports_db) == len(detector.location_db) == 1

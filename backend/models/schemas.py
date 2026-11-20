@@ -217,3 +217,5 @@ class HealthResponse(BaseModel):
     gpu_available: bool = False
     device: str = "cpu"
     detector_reports: int = 0
+    ocr_enabled: bool = True
+    parallel_workers: int = 1  # copies of each detection model (1 = parallel processing off)

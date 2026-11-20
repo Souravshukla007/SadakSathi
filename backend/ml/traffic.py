@@ -63,6 +63,11 @@ CLASS_CONFIG: dict[str, dict] = {
     "auto":                {"display": "Auto Rickshaw",            "priority": "Low"},
     "auto_rickshaw":       {"display": "Auto Rickshaw",            "priority": "Low"},
     "person":              {"display": "Person",                   "priority": "Low"},
+    # Class names emitted by the committed traffic_model_nano_worse.pt (keys are lowercased)
+    "withouthelmet":       {"display": "No Helmet",                "priority": "High"},
+    "tripleriding":        {"display": "Triple Riding",            "priority": "High"},
+    "plate":               {"display": "Number Plate",             "priority": "Medium"},
+    "withhelmet":          {"display": "Helmet (Compliant)",       "priority": "Low"},
 }
 
 PRIORITY_COLORS: dict[str, tuple[int, int, int]] = {
@@ -102,7 +107,9 @@ def load_traffic_model(model_path: str, device: str = "auto"):
         if device == "auto":
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        model.to(device)
+        # NCNN/ONNX exports (fast on Raspberry Pi) run on CPU and have no .to(); only PyTorch weights move.
+        if str(model_path).endswith(".pt"):
+            model.to(device)
         _global_traffic_model = model
         logger.info(f"✅ YOLO traffic model loaded on {device}.")
         return model
@@ -178,7 +185,7 @@ def normalize_class(raw_name: str) -> dict:
 
 def is_plate_class(raw_name: str) -> bool:
     """Return True if this class is a number plate that should be OCR'd."""
-    return raw_name.lower().strip() in ("number_plate", "licence_plate", "license_plate")
+    return raw_name.lower().strip() in ("number_plate", "licence_plate", "license_plate", "plate")
 
 
 def read_plate_text(image: np.ndarray, bbox: dict) -> str | None:
@@ -363,6 +370,7 @@ def assess_traffic_video(
     device: str = "cpu",
     tracker: str = "bytetrack.yaml",
     run_ocr: bool = True,
+    frame_stride: int = 3,
 ) -> dict:
     """
     Assess a video for traffic violations using Ultralytics built-in tracking.
@@ -417,8 +425,9 @@ def assess_traffic_video(
             conf=conf_threshold,
             device=device,
             tracker=tracker,
-            persist=True,    # Maintain track state across frames
+            persist=False,   # Fresh tracker per request; state still carries across frames within this video
             stream=True,     # Generator — avoid loading full video into RAM
+            vid_stride=frame_stride,  # every Nth frame: 3 keeps 10 checks/s at 30 fps for a third of the CPU
             verbose=False,
         )
 
@@ -448,7 +457,8 @@ def assess_traffic_video(
             # Original frame for OCR cropping
             frame_image: np.ndarray | None = getattr(result, "orig_img", None)
 
-            timestamp_sec = round(frame_idx / fps, 2)
+            source_frame  = frame_idx * frame_stride  # position in the original video
+            timestamp_sec = round(source_frame / fps, 2)
 
             for i in range(len(boxes)):
                 x1, y1, x2, y2 = map(int, boxes[i])
@@ -475,7 +485,7 @@ def assess_traffic_video(
                         plate_text = read_plate_text(frame_image, bbox)
 
                 detection = {
-                    "frame_index":  frame_idx,
+                    "frame_index":  source_frame,
                     "timestamp_sec": timestamp_sec,
                     "track_id":     track_id,
                     "class_name":   raw_cls,
@@ -495,7 +505,7 @@ def assess_traffic_video(
                             "class_name":      raw_cls,
                             "display_name":    display_name,
                             "priority":        priority,
-                            "first_seen_frame": frame_idx,
+                            "first_seen_frame": source_frame,
                             "first_seen_sec":   timestamp_sec,
                             "confidence":       round(confidence, 4),
                             "plate_text":       plate_text,

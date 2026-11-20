@@ -4,13 +4,18 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Toaster } from 'react-hot-toast';
+import { ChartColumn, CircleCheck, ClipboardList, Clock, Construction, Inbox, LayoutDashboard, MapPin, MessageSquare, Plus, Search, ThumbsUp, Trophy, Users } from 'lucide-react';
 import AppHeader from '@/components/AppHeader';
 import AppFooter from '@/components/AppFooter';
-import StatusBadge from '@/components/dashboard/StatusBadge';
+import StatusBadge, { statusAccent } from '@/components/dashboard/StatusBadge';
+import StatTile from '@/components/dashboard/StatTile';
+import EmptyState, { RoadIllustration } from '@/components/dashboard/EmptyState';
+import Reveal from '@/components/Reveal';
 import VoteButton from '@/components/dashboard/VoteButton';
 import ChatModal from '@/components/dashboard/ChatModal';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 import WelcomeBanner from '@/components/dashboard/WelcomeBanner';
+import Sidebar, { type SidebarLink } from '@/components/dashboard/Sidebar';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,80 +44,96 @@ interface Complaint {
     submittedBy?: string;
 }
 
-// ─── Sidebar ──────────────────────────────────────────────────────────────────
+const NAV_LINKS: SidebarLink[] = [
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/complaints', label: 'Report a hazard', icon: Plus },
+    { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
+    { href: '/dashboard/chat', label: 'Support chat', icon: MessageSquare },
+    { href: '/performance', label: 'Model accuracy', icon: ChartColumn },
+];
 
-function Sidebar({ user, onLogout }: { user: UserPayload | null; onLogout: () => void }) {
-    const navLinks = [
-        { href: '/dashboard', label: 'Dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6', active: true },
-        { href: '/complaints', label: 'Submit Complaint', icon: 'M12 4v16m8-8H4' },
-        { href: '/leaderboard', label: 'Leaderboard', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
-        { href: '/dashboard/chat', label: 'Support Chat', icon: 'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z' },
-        { href: '/performance', label: 'Analytics', icon: 'M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
-    ];
+// ─── Shared row pieces ────────────────────────────────────────────────────────
 
+function Thumb({ url, alt }: { url: string | null; alt: string }) {
     return (
-        <aside className="w-64 bg-text-primary text-white hidden lg:flex flex-col fixed inset-y-0 left-0 z-[60]">
-            <div className="p-6 border-b border-white/10">
-                <div className="text-xl font-heading font-bold flex items-center gap-2">
-                    <span className="text-2xl">🛣️</span> SadakSathi
-                </div>
-                <div className="mt-2 text-[10px] text-white/50 font-mono uppercase tracking-widest">Citizen Portal</div>
-            </div>
-
-            <nav className="flex-grow p-4 space-y-1">
-                {navLinks.map((link) => (
-                    <Link
-                        key={link.href}
-                        href={link.href}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                            link.active
-                                ? 'bg-brand-primary text-text-primary font-bold'
-                                : 'text-white opacity-70 hover:opacity-100 hover:bg-white/5'
-                        }`}
-                    >
-                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={link.icon} />
-                        </svg>
-                        {link.label}
-                    </Link>
-                ))}
-            </nav>
-
-            <div className="p-4 border-t border-white/10">
-                <div className="flex items-center gap-3 px-4 py-3">
-                    <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center text-text-primary font-bold text-sm flex-shrink-0">
-                        {user?.fullName?.[0]?.toUpperCase() ?? 'U'}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                        <div className="text-xs font-bold truncate">{user?.fullName ?? 'Citizen'}</div>
-                        <div className="text-[10px] opacity-60 truncate">{user?.email ?? ''}</div>
-                    </div>
-                </div>
-                <button
-                    onClick={onLogout}
-                    className="w-full mt-2 px-4 py-2 text-xs font-bold text-red-400 hover:text-red-300 hover:bg-white/5 rounded-lg transition-all text-left"
-                >
-                    Sign Out
-                </button>
-            </div>
-        </aside>
+        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg flex-shrink-0 overflow-hidden border border-border-light bg-neutral-surface flex items-center justify-center">
+            {url ? (
+                // eslint-disable-next-line @next/next/no-img-element -- dynamic data/API image
+                <img src={url} alt={alt} width={96} height={96} loading="lazy" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+            ) : (
+                <RoadIllustration className="w-16 h-auto opacity-80" />
+            )}
+        </div>
     );
 }
 
-// ─── Issue type badge ─────────────────────────────────────────────────────────
-
-function TypeBadge({ type }: { type: string }) {
-    const map: Record<string, string> = {
-        pothole: 'bg-red-100 text-red-700',
-        waterlogging: 'bg-blue-100 text-blue-700',
-        'traffic light': 'bg-yellow-100 text-yellow-700',
-        'road damage': 'bg-orange-100 text-orange-700',
-    };
-    const cls = map[type?.toLowerCase()] ?? 'bg-gray-100 text-gray-600';
+function ChatButton({ onClick }: { onClick: () => void }) {
     return (
-        <span className={`inline-flex items-center px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wide ${cls}`}>
-            {type || 'Other'}
-        </span>
+        <button
+            type="button"
+            onClick={onClick}
+            className="inline-flex items-center gap-1.5 min-h-11 px-3 rounded-lg border border-border-light text-sm font-bold text-text-secondary hover:border-sign-green hover:text-sign-green transition-colors"
+        >
+            <MessageSquare className="w-4 h-4" aria-hidden="true" />
+            Chat
+        </button>
+    );
+}
+
+function Remarks({ text }: { text: string | null }) {
+    if (!text) return null;
+    return (
+        <p className="mt-2 text-sm text-text-secondary bg-sign-green/5 border-l-2 border-sign-green rounded-r-md px-3 py-1.5 line-clamp-3">
+            <span className="font-semibold text-text-primary">Department remarks: </span>
+            {text}
+        </p>
+    );
+}
+
+// Report card: status-coloured stripe on the left edge, photo, details, actions.
+function ReportCard({ c, byline, place, date, actions }: {
+    c: Complaint; byline?: string; place: React.ReactNode; date: string; actions: React.ReactNode;
+}) {
+    return (
+        <article className="group lift elevated relative overflow-hidden bg-surface rounded-xl border border-border-light pl-5 pr-4 sm:pr-5 py-4 flex gap-3 sm:gap-4">
+            <span className={`absolute inset-y-0 left-0 w-1.5 ${statusAccent(c.status)}`} aria-hidden="true" />
+            <Thumb url={c.evidenceUrl} alt={`Photo of ${c.issueType || 'road issue'}`} />
+            <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <h3 className="font-heading font-bold text-text-primary">{c.issueType || 'Road issue'}</h3>
+                    <StatusBadge status={c.status} />
+                </div>
+                {byline && <p className="text-xs text-text-secondary mt-0.5">Reported by {byline}</p>}
+                <p className="text-sm text-text-secondary line-clamp-2 mt-1">{c.description}</p>
+                <Remarks text={c.remarks} />
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-text-secondary">
+                    <span className="font-mono" translate="no">#{c.id.slice(-8).toUpperCase()}</span>
+                    {place}
+                    <span>{date}</span>
+                    <span className="ml-auto flex items-center gap-2">{actions}</span>
+                </div>
+            </div>
+        </article>
+    );
+}
+
+function SkeletonList({ label }: { label: string }) {
+    return (
+        <div aria-busy="true">
+            <p role="status" className="sr-only">{label}</p>
+            <ul className="space-y-3" aria-hidden="true">
+                {[0, 1, 2].map((i) => (
+                    <li key={i} className="bg-surface rounded-xl border border-border-light p-4 flex gap-4 animate-pulse">
+                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg bg-neutral-surface flex-shrink-0" />
+                        <div className="flex-1 space-y-2.5 py-1">
+                            <div className="h-4 w-1/3 rounded bg-neutral-surface" />
+                            <div className="h-3 w-full rounded bg-neutral-surface" />
+                            <div className="h-3 w-2/3 rounded bg-neutral-surface" />
+                        </div>
+                    </li>
+                ))}
+            </ul>
+        </div>
     );
 }
 
@@ -160,8 +181,8 @@ export default function UserDashboardPage() {
     };
 
     // ── Fetch my complaints ─────────────────────────────────────────────────
+    // Loading flags start true; later refetches keep the old list visible until new data arrives.
     const fetchMyComplaints = useCallback(async () => {
-        setMyLoading(true);
         try {
             const res = await fetch('/api/complaints/my', { credentials: 'include' });
             if (res.ok) setMyComplaints(await res.json());
@@ -177,7 +198,6 @@ export default function UserDashboardPage() {
 
     // ── Fetch public feed ───────────────────────────────────────────────────
     const fetchFeed = useCallback(async () => {
-        setFeedLoading(true);
         try {
             const params = new URLSearchParams({ sort, ...(search ? { search } : {}) });
             const res = await fetch(`/api/complaints/feed?${params}`);
@@ -194,308 +214,219 @@ export default function UserDashboardPage() {
     const formatDate = (iso: string) =>
         new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
+    const stats = [
+        { label: 'Reported', icon: ClipboardList, tone: 'neutral' as const, value: myComplaints.length },
+        { label: 'Awaiting review', icon: Clock, tone: 'amber' as const, value: myComplaints.filter(c => c.status === 'Submitted').length },
+        { label: 'In progress', icon: Construction, tone: 'neutral' as const, value: myComplaints.filter(c => c.status === 'Approved' || c.status === 'OnHold').length },
+        { label: 'Resolved', icon: CircleCheck, tone: 'green' as const, value: myComplaints.filter(c => c.status === 'Completed' || c.status === 'ResolvedReviewed').length },
+    ];
+
     // ─────────────────────────────────────────────────────────────────────────
 
     return (
         <>
             <Toaster position="top-center" />
             <AppHeader dashboardMode />
-            <LogoutConfirmModal 
-                isOpen={showLogoutConfirm} 
-                onClose={() => setShowLogoutConfirm(false)} 
-                onConfirm={handleLogout} 
+            <LogoutConfirmModal
+                isOpen={showLogoutConfirm}
+                onClose={() => setShowLogoutConfirm(false)}
+                onConfirm={handleLogout}
             />
-            <main className="flex-grow pt-16">
+            <main id="main-content" className="flex-grow pt-16">
                 <div className="flex min-h-screen bg-neutral-surface">
-                    <Sidebar user={user} onLogout={triggerLogout} />
+                    <Sidebar links={NAV_LINKS} activeHref="/dashboard" portalLabel="Citizen portal" user={user} onLogout={triggerLogout} />
 
-                    <div className="flex-grow lg:ml-64 p-6 lg:p-8">
-                        <div className="max-w-7xl mx-auto">
+                    <div className="flex-grow min-w-0 lg:ml-64 px-4 py-6 sm:p-6 lg:p-8">
+                        <div className="max-w-5xl mx-auto">
 
-                            {/* ── Header ── */}
-                            <div className="flex justify-between items-center mb-8">
-                                <div>
-                                    <h1 className="text-3xl font-heading font-normal tracking-tight">My Dashboard</h1>
-                                    <p className="text-sm text-text-secondary mt-1">Manage your complaints and track community issues</p>
+                            {/* ── Header: glow panel holding the welcome sign and the counts ── */}
+                            <header className="road-glow relative overflow-hidden rounded-2xl border border-border-light elevated p-4 sm:p-6 pb-7 sm:pb-8 mb-8">
+                                <div className="animate-rise mb-5">
+                                    <h1 className="text-3xl font-heading font-normal tracking-tighter">Dashboard</h1>
+                                    <p className="text-sm text-text-secondary mt-1">Track your reports and see what others nearby have flagged.</p>
                                 </div>
-                                <Link
-                                    href="/complaints"
-                                    className="hidden sm:flex items-center gap-2 px-5 py-2.5 bg-text-primary text-white font-bold text-sm rounded-lg hover:shadow-soft hover:-translate-y-0.5 transition-all"
-                                >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                                    </svg>
-                                    Report Issue
-                                </Link>
-                            </div>
 
-                            {/* ── Welcome Banner ── */}
-                            <WelcomeBanner
-                                name={user?.fullName ?? 'Citizen'}
-                                complaintCount={myComplaints.length}
-                            />
+                                <WelcomeBanner
+                                    name={user?.fullName ?? 'Citizen'}
+                                    complaintCount={myComplaints.length}
+                                />
 
-                            {/* ── Stat cards ── */}
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                                {[
-                                    { label: 'Total Submitted', value: myComplaints.length, color: 'text-text-primary' },
-                                    { label: 'Resolved', value: myComplaints.filter(c => c.status === 'Completed' || c.status === 'ResolvedReviewed').length, color: 'text-green-600' },
-                                    { label: 'In Progress', value: myComplaints.filter(c => c.status === 'Approved' || c.status === 'OnHold').length, color: 'text-blue-600' },
-                                    { label: 'Pending Review', value: myComplaints.filter(c => c.status === 'Submitted').length, color: 'text-yellow-600' },
-                                ].map((stat) => (
-                                    <div key={stat.label} className="bg-white p-5 rounded-2xl shadow-soft border border-border-light">
-                                        <div className="text-[10px] font-mono font-bold text-text-secondary uppercase tracking-wider mb-2">{stat.label}</div>
-                                        <div className={`text-3xl font-bold ${stat.color}`}>{stat.value}</div>
-                                    </div>
-                                ))}
-                            </div>
+                                <dl className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-5">
+                                    {stats.map((stat, i) => (
+                                        <StatTile
+                                            key={stat.label}
+                                            icon={stat.icon}
+                                            label={stat.label}
+                                            tone={stat.tone}
+                                            value={myLoading ? '–' : stat.value}
+                                            delay={300 + i * 70}
+                                        />
+                                    ))}
+                                </dl>
+                            </header>
 
                             {/* ── Tabs ── */}
-                            <div className="flex gap-1 bg-white border border-border-light rounded-xl p-1.5 mb-6 w-fit">
-                                {(['my', 'feed'] as const).map((tab) => (
+                            <div className="inline-flex max-w-full p-1 gap-1 rounded-xl bg-surface border border-border-light elevated mb-5" role="group" aria-label="Which reports to show">
+                                {([
+                                    { id: 'my', label: 'My reports', icon: Inbox, count: myLoading ? null : myComplaints.length },
+                                    { id: 'feed', label: 'Community feed', icon: Users, count: null },
+                                ] as const).map(({ id, label, icon: Icon, count }) => (
                                     <button
-                                        key={tab}
-                                        onClick={() => setActiveTab(tab)}
-                                        className={`px-5 py-2.5 text-sm font-bold rounded-lg transition-all ${
-                                            activeTab === tab
-                                                ? 'bg-text-primary text-white shadow-sm'
-                                                : 'text-text-secondary hover:text-text-primary'
+                                        key={id}
+                                        type="button"
+                                        onClick={() => setActiveTab(id)}
+                                        aria-pressed={activeTab === id}
+                                        className={`min-h-11 px-3 sm:px-4 rounded-lg text-sm font-bold inline-flex items-center gap-2 transition-colors ${
+                                            activeTab === id
+                                                ? 'bg-asphalt text-white'
+                                                : 'text-text-secondary hover:text-text-primary hover:bg-neutral-surface'
                                         }`}
                                     >
-                                        {tab === 'my' ? 'My Complaints' : 'Community Feed'}
+                                        <Icon className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                                        {label}
+                                        {count !== null && (
+                                            <span className={`px-1.5 rounded text-xs tabular-nums ${activeTab === id ? 'bg-white/15' : 'bg-neutral-surface'}`}>{count}</span>
+                                        )}
                                     </button>
                                 ))}
                             </div>
 
-                            {/* ─────────────────────────────────────────────
-                                TAB: MY SUBMITTED COMPLAINTS
-                            ───────────────────────────────────────────── */}
+                            {/* ── TAB: my reports ── */}
                             {activeTab === 'my' && (
-                                <div className="bg-white rounded-2xl shadow-soft border border-border-light overflow-hidden">
-                                    <div className="px-8 py-5 border-b border-border-light flex justify-between items-center">
-                                        <h2 className="font-heading font-bold text-lg">My Submitted Complaints</h2>
-                                        <span className="text-xs font-mono text-text-secondary">{myComplaints.length} total</span>
+                                <section aria-labelledby="my-reports-title">
+                                    <div className="flex justify-between items-baseline gap-4 mb-3">
+                                        <h2 id="my-reports-title" className="font-heading font-bold text-lg">My reports</h2>
+                                        {!myLoading && <span className="text-sm text-text-secondary">{myComplaints.length} total</span>}
                                     </div>
 
                                     {myLoading ? (
-                                        <div className="p-12 text-center text-text-secondary">
-                                            <div className="inline-block w-8 h-8 border-4 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin mb-3" />
-                                            <p className="text-sm">Loading your complaints…</p>
-                                        </div>
+                                        <SkeletonList label="Loading your reports…" />
                                     ) : myComplaints.length === 0 ? (
-                                        <div className="p-12 text-center">
-                                            <div className="text-5xl mb-4">📭</div>
-                                            <h3 className="font-heading font-bold mb-2">No complaints yet</h3>
-                                            <p className="text-text-secondary text-sm mb-6">Help your community by reporting road issues.</p>
-                                            <Link href="/complaints" className="inline-flex items-center gap-2 px-6 py-3 bg-text-primary text-white font-bold rounded-xl text-sm hover:shadow-soft transition-all">
-                                                Report First Issue
-                                            </Link>
+                                        <div className="bg-surface rounded-xl border border-border-light elevated">
+                                            <EmptyState
+                                                title="You have not reported anything yet"
+                                                action={
+                                                    <Link href="/complaints" className="inline-flex items-center gap-2 min-h-11 px-5 bg-text-primary text-neutral-background font-bold rounded-lg text-sm hover:opacity-90 transition-colors">
+                                                        <Plus className="w-4 h-4" aria-hidden="true" />
+                                                        Report a hazard
+                                                    </Link>
+                                                }
+                                            >
+                                                Photograph a pothole, open manhole or other hazard and SadakSathi sends it to the right department.
+                                            </EmptyState>
                                         </div>
                                     ) : (
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left">
-                                                <thead>
-                                                    <tr className="text-[10px] font-mono text-text-secondary uppercase bg-neutral-surface border-b border-border-light">
-                                                        <th className="px-6 py-4">ID</th>
-                                                        <th className="px-6 py-4">Details</th>
-                                                        <th className="px-6 py-4">Date</th>
-                                                        <th className="px-6 py-4">Status</th>
-                                                        <th className="px-6 py-4">Admin Remarks</th>
-                                                        <th className="px-6 py-4">Votes</th>
-                                                        <th className="px-6 py-4">Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-border-light">
-                                                    {myComplaints.map((c) => (
-                                                        <tr key={c.id} className="hover:bg-neutral-surface/50 transition-colors">
-                                                            <td className="px-6 py-4 text-xs font-mono text-text-secondary whitespace-nowrap">
-                                                                #{c.id.slice(-8).toUpperCase()}
-                                                            </td>
-                                                            <td className="px-6 py-4">
-                                                                <div className="flex items-start gap-3 max-w-xs">
-                                                                    {c.evidenceUrl ? (
-                                                                        <img
-                                                                            src={c.evidenceUrl}
-                                                                            alt="Evidence"
-                                                                            className="w-12 h-12 rounded-lg object-cover flex-shrink-0 border border-border-light"
-                                                                        />
-                                                                    ) : (
-                                                                        <div className="w-12 h-12 rounded-lg flex-shrink-0 bg-neutral-surface border border-border-light flex items-center justify-center text-xl">
-                                                                            🛣️
-                                                                        </div>
-                                                                    )}
-                                                                    <div className="min-w-0">
-                                                                        <div className="text-xs font-bold text-text-primary truncate">{c.issueType || 'Road Issue'}</div>
-                                                                        <div className="text-xs text-text-secondary line-clamp-2 mt-0.5">{c.description}</div>
-                                                                        <div className="text-[10px] text-text-secondary mt-1 font-mono">{c.city}, {c.state}</div>
-                                                                    </div>
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-6 py-4 text-xs text-text-secondary whitespace-nowrap">{formatDate(c.createdAt)}</td>
-                                                            <td className="px-6 py-4">
-                                                                <StatusBadge status={c.status} />
-                                                            </td>
-                                                            <td className="px-6 py-4 text-xs text-text-secondary max-w-[160px]">
-                                                                {c.remarks ? (
-                                                                    <span className="line-clamp-2">{c.remarks}</span>
-                                                                ) : (
-                                                                    <span className="text-text-secondary/50 italic">No remarks yet</span>
-                                                                )}
-                                                            </td>
-                                                            <td className="px-6 py-4">
-                                                                <div className="flex items-center gap-1.5 text-xs font-bold">
-                                                                    <svg className="w-3.5 h-3.5 text-brand-primary" fill="currentColor" viewBox="0 0 24 24">
-                                                                        <path d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
-                                                                    </svg>
-                                                                    {c.upvoteCount}
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-6 py-4">
-                                                                <button
-                                                                    onClick={() => setChatComplaintId(c.id)}
-                                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-light text-xs font-bold text-text-secondary hover:border-brand-primary hover:text-brand-primary transition-all"
-                                                                >
-                                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                                                                    </svg>
-                                                                    Chat
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
+                                        <ul className="space-y-3">
+                                            {myComplaints.map((c, i) => (
+                                                <Reveal as="li" key={c.id} delay={Math.min(i, 6) * 70}>
+                                                    <ReportCard
+                                                        c={c}
+                                                        date={formatDate(c.createdAt)}
+                                                        place={<span className="inline-flex items-center gap-1"><MapPin className="w-3.5 h-3.5" aria-hidden="true" />{c.city}, {c.state}</span>}
+                                                        actions={
+                                                            <>
+                                                                <span className="inline-flex items-center gap-1"><ThumbsUp className="w-3.5 h-3.5" aria-hidden="true" />{c.upvoteCount} upvote{c.upvoteCount !== 1 ? 's' : ''}</span>
+                                                                <ChatButton onClick={() => setChatComplaintId(c.id)} />
+                                                            </>
+                                                        }
+                                                    />
+                                                </Reveal>
+                                            ))}
+                                        </ul>
                                     )}
-                                </div>
+                                </section>
                             )}
 
-                            {/* ─────────────────────────────────────────────
-                                TAB: COMMUNITY FEED
-                            ───────────────────────────────────────────── */}
+                            {/* ── TAB: community feed ── */}
                             {activeTab === 'feed' && (
-                                <div className="bg-white rounded-2xl shadow-soft border border-border-light overflow-hidden">
-                                    {/* Controls */}
-                                    <div className="px-8 py-5 border-b border-border-light flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                                        <h2 className="font-heading font-bold text-lg">Community Complaints Feed</h2>
-                                        <div className="flex gap-3 w-full sm:w-auto">
-                                            <div className="flex items-center gap-2 flex-1 sm:flex-none">
-                                                <input
-                                                    type="text"
-                                                    placeholder="Search by ID…"
-                                                    value={search}
-                                                    onChange={(e) => setSearch(e.target.value)}
-                                                    className="w-full sm:w-48 px-3 py-2 text-sm border border-border-light rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary bg-neutral-surface"
-                                                />
+                                <section aria-labelledby="feed-title">
+                                    <div className="flex flex-col md:flex-row gap-3 md:items-center justify-between mb-3">
+                                        <h2 id="feed-title" className="font-heading font-bold text-lg">Community feed</h2>
+                                        <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+                                            <div className="flex gap-2 flex-1">
+                                                <label htmlFor="feed-search" className="sr-only">Search reports by ID</label>
+                                                <div className="relative min-w-0 flex-1">
+                                                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" aria-hidden="true" />
+                                                    <input
+                                                        id="feed-search"
+                                                        type="search"
+                                                        placeholder="Search by report ID…"
+                                                        autoComplete="off"
+                                                        spellCheck={false}
+                                                        value={search}
+                                                        onChange={(e) => setSearch(e.target.value)}
+                                                        className="w-full sm:w-52 min-h-11 pl-9 pr-3 text-sm border border-border-light rounded-lg focus:outline-none focus:border-sign-green bg-surface"
+                                                    />
+                                                </div>
                                                 <button
+                                                    type="button"
                                                     onClick={fetchFeed}
-                                                    className="px-3 py-2 bg-text-primary text-white rounded-lg text-sm font-bold hover:opacity-90 transition-opacity"
+                                                    className="inline-flex items-center gap-1.5 min-h-11 px-4 bg-asphalt text-white rounded-lg text-sm font-bold hover:bg-asphalt/90 transition-colors"
                                                 >
                                                     Search
                                                 </button>
                                             </div>
+                                            <label htmlFor="feed-sort" className="sr-only">Sort reports</label>
                                             <select
+                                                id="feed-sort"
                                                 value={sort}
                                                 onChange={(e) => setSort(e.target.value)}
-                                                className="px-3 py-2 text-sm border border-border-light rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary bg-neutral-surface"
+                                                className="min-h-11 px-3 text-sm text-text-primary border border-border-light rounded-lg focus:outline-none focus:border-sign-green bg-surface"
                                             >
-                                                <option value="newest">Newest First</option>
-                                                <option value="oldest">Oldest First</option>
-                                                <option value="upvotes">Most Upvotes</option>
+                                                <option value="newest">Newest first</option>
+                                                <option value="oldest">Oldest first</option>
+                                                <option value="upvotes">Most upvoted</option>
                                             </select>
                                         </div>
                                     </div>
 
                                     {feedLoading ? (
-                                        <div className="p-12 text-center text-text-secondary">
-                                            <div className="inline-block w-8 h-8 border-4 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin mb-3" />
-                                            <p className="text-sm">Loading feed…</p>
-                                        </div>
+                                        <SkeletonList label="Loading community reports…" />
                                     ) : feed.length === 0 ? (
-                                        <div className="p-12 text-center">
-                                            <div className="text-5xl mb-4">🔍</div>
-                                            <h3 className="font-heading font-bold mb-2">No complaints found</h3>
-                                            <p className="text-text-secondary text-sm">Try adjusting your search or sort options.</p>
+                                        <div className="bg-surface rounded-xl border border-border-light elevated">
+                                            <EmptyState
+                                                title={search ? 'No reports match that ID' : 'No community reports yet'}
+                                                action={search ? (
+                                                    <button type="button" onClick={() => setSearch('')} className="inline-flex items-center min-h-11 px-5 border border-border-light rounded-lg text-sm font-bold hover:border-border-dark transition-colors">
+                                                        Clear search
+                                                    </button>
+                                                ) : (
+                                                    <Link href="/complaints" className="inline-flex items-center gap-2 min-h-11 px-5 bg-text-primary text-neutral-background font-bold rounded-lg text-sm hover:opacity-90 transition-colors">
+                                                        <Plus className="w-4 h-4" aria-hidden="true" />
+                                                        Report a hazard
+                                                    </Link>
+                                                )}
+                                            >
+                                                {search ? 'Check the ID, or clear the search to see every report.' : 'Reports from people in your city will show up here.'}
+                                            </EmptyState>
                                         </div>
                                     ) : (
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left">
-                                                <thead>
-                                                    <tr className="text-[10px] font-mono text-text-secondary uppercase bg-neutral-surface border-b border-border-light">
-                                                        <th className="px-6 py-4">ID</th>
-                                                        <th className="px-6 py-4">Details</th>
-                                                        <th className="px-6 py-4">Coords</th>
-                                                        <th className="px-6 py-4">Type</th>
-                                                        <th className="px-6 py-4">Date</th>
-                                                        <th className="px-6 py-4">Status</th>
-                                                        <th className="px-6 py-4">Votes</th>
-                                                        <th className="px-6 py-4">Remarks</th>
-                                                        <th className="px-6 py-4">Action</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-border-light">
-                                                    {feed.map((c) => (
-                                                        <tr key={c.id} className="hover:bg-neutral-surface/50 transition-colors">
-                                                            <td className="px-6 py-4 text-xs font-mono text-text-secondary whitespace-nowrap">
-                                                                #{c.id.slice(-8).toUpperCase()}
-                                                            </td>
-                                                            <td className="px-6 py-4">
-                                                                <div className="flex items-start gap-3 max-w-xs">
-                                                                    {c.evidenceUrl ? (
-                                                                        <img src={c.evidenceUrl} alt="Evidence" className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-border-light" />
-                                                                    ) : (
-                                                                        <div className="w-10 h-10 rounded-lg flex-shrink-0 bg-neutral-surface border border-border-light flex items-center justify-center text-lg">🛣️</div>
-                                                                    )}
-                                                                    <div className="min-w-0">
-                                                                        <div className="text-xs font-bold truncate">{c.submittedBy}</div>
-                                                                        <div className="text-xs text-text-secondary line-clamp-1 mt-0.5">{c.description}</div>
-                                                                    </div>
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-6 py-4 text-xs font-mono text-text-secondary whitespace-nowrap">
-                                                                {c.latitude && c.longitude
-                                                                    ? `${c.latitude.toFixed(4)}, ${c.longitude.toFixed(4)}`
-                                                                    : '—'}
-                                                            </td>
-                                                            <td className="px-6 py-4">
-                                                                <TypeBadge type={c.issueType} />
-                                                            </td>
-                                                            <td className="px-6 py-4 text-xs text-text-secondary whitespace-nowrap">{formatDate(c.createdAt)}</td>
-                                                            <td className="px-6 py-4">
-                                                                <StatusBadge status={c.status} />
-                                                            </td>
-                                                            <td className="px-6 py-4">
+                                        <ul className="space-y-3">
+                                            {feed.map((c, i) => (
+                                                <Reveal as="li" key={c.id} delay={Math.min(i, 6) * 70}>
+                                                    <ReportCard
+                                                        c={c}
+                                                        byline={c.submittedBy}
+                                                        date={formatDate(c.createdAt)}
+                                                        place={c.latitude != null && c.longitude != null && (
+                                                            <span className="inline-flex items-center gap-1 tabular-nums"><MapPin className="w-3.5 h-3.5" aria-hidden="true" />{c.latitude.toFixed(4)}, {c.longitude.toFixed(4)}</span>
+                                                        )}
+                                                        actions={
+                                                            <>
                                                                 <VoteButton
                                                                     complaintId={c.id}
                                                                     initialCount={c.upvoteCount}
                                                                     hasVoted={c.hasVoted ?? false}
                                                                 />
-                                                            </td>
-                                                            <td className="px-6 py-4 text-xs text-text-secondary max-w-[140px]">
-                                                                {c.remarks ? (
-                                                                    <span className="line-clamp-2">{c.remarks}</span>
-                                                                ) : (
-                                                                    <span className="text-text-secondary/50 italic">—</span>
-                                                                )}
-                                                            </td>
-                                                            <td className="px-6 py-4">
-                                                                <button
-                                                                    onClick={() => setChatComplaintId(c.id)}
-                                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-light text-xs font-bold text-text-secondary hover:border-brand-primary hover:text-brand-primary transition-all whitespace-nowrap"
-                                                                >
-                                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                                                                    </svg>
-                                                                    Chat
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
+                                                                <ChatButton onClick={() => setChatComplaintId(c.id)} />
+                                                            </>
+                                                        }
+                                                    />
+                                                </Reveal>
+                                            ))}
+                                        </ul>
                                     )}
-                                </div>
+                                </section>
                             )}
 
                         </div>
@@ -507,7 +438,6 @@ export default function UserDashboardPage() {
                 <AppFooter />
             </div>
 
-            {/* Chat Modal */}
             {chatComplaintId && (
                 <ChatModal complaintId={chatComplaintId} onClose={() => setChatComplaintId(null)} />
             )}

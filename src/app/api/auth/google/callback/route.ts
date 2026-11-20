@@ -1,18 +1,22 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { signToken } from '@/lib/jwt';
+import { setSessionCookie } from '@/lib/session';
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const code = searchParams.get('code');
+    const state = searchParams.get('state');
+    const expectedState = req.cookies.get('oauth_state')?.value;
 
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const redirectUri = `${baseUrl}/api/auth/google/callback`;
 
-    if (!code || !clientId || !clientSecret) {
-        return NextResponse.redirect(`${baseUrl}/auth?error=AuthenticationFailed`);
+    if (!code || !clientId || !clientSecret || !state || state !== expectedState) {
+        const res = NextResponse.redirect(`${baseUrl}/auth?error=AuthenticationFailed`);
+        res.cookies.delete('oauth_state');
+        return res;
     }
 
     try {
@@ -47,7 +51,8 @@ export async function GET(req: Request) {
 
         const googleUser = await userResponse.json();
 
-        if (!googleUser.email) {
+        // Only an address Google has verified proves the person owns it.
+        if (!googleUser.email || googleUser.verified_email !== true) {
             return NextResponse.redirect(`${baseUrl}/auth?error=EmailRequired`);
         }
 
@@ -55,6 +60,12 @@ export async function GET(req: Request) {
         let user = await prisma.user.findUnique({
             where: { email: googleUser.email },
         });
+
+        // Staff accounts sign in with their password only, so a Google identity for a staff
+        // address (for example from whoever registers that domain) can never open a desk.
+        if (user && user.role !== 'user') {
+            return NextResponse.redirect(`${baseUrl}/auth?error=UsePassword`);
+        }
 
         // 4. Create a new user if they don't exist
         if (!user) {
@@ -67,33 +78,16 @@ export async function GET(req: Request) {
                     email: googleUser.email,
                     fullName: googleUser.name || 'Google User',
                     username: `${baseUsername}_${uniqueSuffix}`,
-                    role: 'Citizen Contributor', 
+                    role: 'user',
                     passwordHash: "",
                 },
             });
         }
 
-        // 5. Generate our custom JWT for the application session
-        // NOTE: must use 'id' (not 'userId') — all API routes read payload.id
-        const token = await signToken({
-            id: user.id,
-            email: user.email,
-            fullName: user.fullName,
-            role: user.role,
-        });
-
-        // 6. Redirect to the homepage with the cookie set
+        // 5. Redirect to the homepage with our session cookie set
         const response = NextResponse.redirect(`${baseUrl}/`);
-        
-        response.cookies.set('auth_token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_APP_URL?.startsWith('https'),
-            sameSite: 'lax',
-            maxAge: 60 * 60 * 24 * 7, // 7 days
-            path: '/',
-        });
-
-        return response;
+        response.cookies.delete('oauth_state');
+        return setSessionCookie(response, user);
 
     } catch (error) {
         console.error('Google OAuth Callback Error:', error);

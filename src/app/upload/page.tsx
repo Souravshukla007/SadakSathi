@@ -3,8 +3,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import AppHeader from "@/components/AppHeader";
 import AppFooter from "@/components/AppFooter";
-import { Upload, AlertCircle, FileImage, ShieldAlert, BadgeInfo, Zap } from "lucide-react";
-import { saveDetectionResult, setLastVideoBlobUrl } from "@/lib/mlApi";
+import { Upload, CircleAlert, CircleCheck, Construction, Image as ImageIcon, Loader2, ScanLine, TrafficCone, Video } from "lucide-react";
+import Reveal from "@/components/Reveal";
+import PageHero from "@/components/dashboard/PageHero";
+import EmptyState from "@/components/dashboard/EmptyState";
+import DetectionCard from "@/components/dashboard/DetectionCard";
+import { PriorityBadge } from "@/components/dashboard/StatusBadge";
+import { MlResultView, prefillFromScan, saveDetectionResult, setLastVideoBlobUrl } from "@/lib/mlApi";
 import { useRouter } from "next/navigation";
 
 type EngineType = "road" | "traffic";
@@ -27,28 +32,11 @@ export default function UploadPage() {
 
     // Processing State
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
     const [error, setError] = useState<string | null>(null);
     
     // Results State
-    const [results, setResults] = useState<any>(null);
-
-    useEffect(() => {
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('animate-on-scroll-visible');
-                    observer.unobserve(entry.target);
-                }
-            });
-        }, { threshold: 0.1 });
-
-        document.querySelectorAll('[data-animation-on-scroll]').forEach(el => {
-            el.classList.add('animate-on-scroll-hidden');
-            observer.observe(el);
-        });
-
-        return () => observer.disconnect();
-    }, []);
+    const [results, setResults] = useState<MlResultView | null>(null);
 
     // Cleanup object URL on unmount to prevent memory leaks,
     // but only if we are NOT navigating to the results page.
@@ -77,15 +65,17 @@ export default function UploadPage() {
         fileInputRef.current?.click();
     };
 
-    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    const handleDragOver = (e: React.DragEvent<HTMLButtonElement>) => {
         e.preventDefault();
         e.stopPropagation();
+        if (!isDragging) setIsDragging(true);
     };
 
-    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    const handleDrop = (e: React.DragEvent<HTMLButtonElement>) => {
         e.preventDefault();
         e.stopPropagation();
-        
+        setIsDragging(false);
+
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             const droppedFile = e.dataTransfer.files[0];
             setFile(droppedFile);
@@ -129,16 +119,18 @@ export default function UploadPage() {
 
             if (!res.ok) {
                 if (res.status === 503) {
-                    throw new Error("Model Not Loaded: Please place your .pt model files in the backend directory and restart the FastAPI server.");
+                    throw new Error("The AI detector is offline right now. Try again in a few minutes.");
                 }
                 const errorData = await res.json().catch(() => null);
-                throw new Error(errorData?.detail || errorData?.message || `API Error: ${res.status}`);
+                // FastAPI validation errors put a list in `detail`; only show it when it's plain text.
+                const detail = typeof errorData?.detail === "string" ? errorData.detail : null;
+                throw new Error(detail || errorData?.message || `The scan service returned an error (${res.status}). Try again.`);
             }
 
             const data = await res.json();
 
             if (!data.success) {
-                throw new Error(data.message || "Failed to analyze media.");
+                throw new Error(data.message || "This file could not be scanned. Try a different photo or video.");
             }
 
             // Persist result to sessionStorage for /results page
@@ -152,301 +144,303 @@ export default function UploadPage() {
 
             setResults(data);
 
-        } catch (err: any) {
+        } catch (err) {
             console.error("Analysis failed:", err);
-            setError(err.message || "An unexpected error occurred during analysis.");
+            setError((err instanceof Error && err.message) || "Something went wrong while scanning. Try again, or use a different file.");
         } finally {
             setIsAnalyzing(false);
         }
     };
 
-    const getPriorityColor = (priority: string) => {
-        switch (priority?.toUpperCase()) {
-            case "HIGH": return "text-red-500 bg-red-50 border-red-200";
-            case "MEDIUM": return "text-yellow-600 bg-yellow-50 border-yellow-200";
-            default: return "text-green-600 bg-green-50 border-green-200";
-        }
+    const prettyClass = (name: string) => {
+        const s = name.split("_").join(" ");
+        return s.charAt(0).toUpperCase() + s.slice(1);
     };
+
+    const switchTab = (tab: MediaType) => {
+        setActiveTab(tab);
+        if (file) { setFile(null); setResults(null); setPreviewUrl(null); }
+    };
+
+    const engines = [
+        { id: "road" as const, icon: Construction, title: "Road hazards", desc: "Potholes, open manholes, garbage and fallen trees." },
+        { id: "traffic" as const, icon: TrafficCone, title: "Traffic violations", desc: "Riders without helmets and triple riding. Reads number plates." },
+    ];
+
+    const kind = activeTab === "IMAGE" ? "photo" : "video";
 
     return (
         <>
             <AppHeader />
-            <main className="flex-grow pt-16">
-                <section className="pt-24 pb-24 px-6 bg-neutral-surface min-h-screen">
+            <main id="main-content" className="flex-grow pt-16 bg-neutral-surface">
+                <PageHero
+                    maxWidth="max-w-4xl"
+                    title="Scan a photo or video"
+                    description="Choose what to look for and upload your media. The AI marks every hazard or violation it finds, and you can turn the result into a report."
+                />
+                <section className="py-8 md:py-12 px-4 sm:px-6 min-h-screen">
                     <div className="max-w-4xl mx-auto">
-                        
-                        {/* Header */}
-                        <div className="mb-10 text-center" data-animation-on-scroll="">
-                            <h1 className="font-heading text-4xl md:text-5xl font-normal tracking-tighter mb-4">Unified AI Detector</h1>
-                            <p className="text-text-secondary text-lg max-w-2xl mx-auto">
-                                Select an AI Engine and upload your media for deep municipal intelligence.
-                            </p>
-                        </div>
 
-                        {/* Engine Selector */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8" data-animation-on-scroll="">
-                            <button 
-                                onClick={() => { setEngine("road"); setResults(null); }}
-                                className={`p-6 rounded-2xl border-2 transition-all text-left flex items-start gap-4 ${
-                                    engine === "road" 
-                                        ? "border-brand-primary bg-white shadow-soft" 
-                                        : "border-border-light bg-transparent hover:bg-white hover:shadow-sm"
-                                }`}
-                            >
-                                <div className={`p-3 rounded-lg ${engine === "road" ? "bg-brand-primary/10 text-brand-primary" : "bg-gray-100 text-gray-500"}`}>
-                                    <ShieldAlert size={28} />
-                                </div>
-                                <div>
-                                    <h3 className="font-heading text-lg font-bold">Road Hazard Engine</h3>
-                                    <p className="text-sm text-text-secondary mt-1">Detects potholes, open manholes, garbage accumulation, and broken infrastructure.</p>
-                                </div>
-                            </button>
+                        {/* Engine selector */}
+                        <fieldset className="mb-6">
+                            <legend className="text-sm font-semibold text-text-primary mb-3">What should the AI look for?</legend>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                                {engines.map(({ id, icon: Icon, title, desc }, i) => {
+                                    const on = engine === id;
+                                    return (
+                                        <Reveal key={id} delay={i * 70}>
+                                            <button
+                                                type="button"
+                                                onClick={() => { setEngine(id); setResults(null); }}
+                                                aria-pressed={on}
+                                                className={`lift elevated relative w-full h-full p-4 sm:p-5 rounded-xl border-2 text-left flex items-start gap-4 ${
+                                                    on ? "border-sign-green bg-surface bg-linear-to-br from-sign-green/8 to-transparent to-70%" : "border-border-light bg-surface hover:border-border-dark"
+                                                }`}
+                                            >
+                                                <span className={`w-11 h-11 rounded-lg grid place-items-center flex-shrink-0 transition-colors ${on ? "bg-text-primary text-neutral-background" : "bg-neutral-surface text-text-secondary border border-border-light"}`}>
+                                                    <Icon className="w-6 h-6" aria-hidden="true" />
+                                                </span>
+                                                <span className="min-w-0 pr-6">
+                                                    <span className="block font-heading text-lg font-bold">{title}</span>
+                                                    <span className="block text-sm text-text-secondary mt-0.5">{desc}</span>
+                                                </span>
+                                                {on && <CircleCheck key={id} className="animate-pop absolute top-4 right-4 w-5 h-5 text-sign-green" aria-hidden="true" />}
+                                            </button>
+                                        </Reveal>
+                                    );
+                                })}
+                            </div>
+                        </fieldset>
 
-                            <button 
-                                onClick={() => { setEngine("traffic"); setResults(null); }}
-                                className={`p-6 rounded-2xl border-2 transition-all text-left flex items-start gap-4 ${
-                                    engine === "traffic" 
-                                        ? "border-brand-secondary bg-white shadow-soft" 
-                                        : "border-border-light bg-transparent hover:bg-white hover:shadow-sm"
-                                }`}
-                            >
-                                <div className={`p-3 rounded-lg ${engine === "traffic" ? "bg-brand-secondary/10 text-brand-secondary" : "bg-gray-100 text-gray-500"}`}>
-                                    <Zap size={28} />
-                                </div>
-                                <div>
-                                    <h3 className="font-heading text-lg font-bold">Traffic Violation Engine</h3>
-                                    <p className="text-sm text-text-secondary mt-1">Identifies helmetless riders, triple riding, wrong-side driving, and extracts number plates.</p>
-                                </div>
-                            </button>
-                        </div>
+                        {/* Upload widget */}
+                        <div className="bg-surface rounded-xl border border-border-light elevated overflow-hidden">
 
-                        {/* Upload Widget */}
-                        <div className="bg-white rounded-2xl shadow-medium border border-border-light overflow-hidden" data-animation-on-scroll="">
-                            
-                            {/* Media Tabs */}
-                            <div className="flex border-b border-border-light">
-                                <button
-                                    className={`flex-1 py-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'IMAGE' ? 'border-brand-primary text-brand-primary bg-neutral-surface' : 'border-transparent text-text-secondary hover:bg-neutral-surface'}`}
-                                    onClick={() => { setActiveTab('IMAGE'); if(file) { setFile(null); setResults(null); setPreviewUrl(null); } }}
-                                >
-                                    IMAGE UPLOAD
-                                </button>
-                                <button
-                                    className={`flex-1 py-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'VIDEO' ? 'border-brand-primary text-brand-primary bg-neutral-surface' : 'border-transparent text-text-secondary hover:bg-neutral-surface'}`}
-                                    onClick={() => { setActiveTab('VIDEO'); if(file) { setFile(null); setResults(null); setPreviewUrl(null); } }}
-                                >
-                                    VIDEO UPLOAD
-                                </button>
+                            {/* Media tabs */}
+                            <div className="flex border-b border-border-light" role="group" aria-label="Media type">
+                                {([["IMAGE", "Photo", ImageIcon], ["VIDEO", "Video", Video]] as const).map(([tab, label, Icon]) => (
+                                    <button
+                                        key={tab}
+                                        type="button"
+                                        aria-pressed={activeTab === tab}
+                                        onClick={() => switchTab(tab)}
+                                        className={`flex-1 min-h-12 text-sm font-bold border-b-2 -mb-px inline-flex items-center justify-center gap-2 transition-colors ${activeTab === tab ? 'border-sign-green text-text-primary bg-sign-green/5' : 'border-transparent text-text-secondary hover:text-text-primary hover:bg-neutral-surface'}`}
+                                    >
+                                        <Icon className="w-4 h-4" aria-hidden="true" />
+                                        {label}
+                                    </button>
+                                ))}
                             </div>
 
-                            <div className="p-8 md:p-12">
-                                {/* Native Hidden Input */}
-                                <input 
+                            <div className="p-4 sm:p-8">
+                                <input
                                     type="file"
                                     ref={fileInputRef}
                                     onChange={handleFileChange}
                                     accept={activeTab === "IMAGE" ? "image/jpeg, image/png, image/webp" : "video/mp4, video/avi, video/quicktime"}
                                     className="hidden"
+                                    aria-label={activeTab === "IMAGE" ? "Choose a photo" : "Choose a video"}
                                 />
 
-                                {/* Dropzone or Preview */}
                                 {!file ? (
-                                    <div
-                                        className="border-2 border-dashed border-gray-200 rounded-xl p-12 md:p-16 text-center hover:border-brand-primary hover:bg-brand-primary/5 transition-all cursor-pointer group"
+                                    <button
+                                        type="button"
+                                        className={`group w-full border-2 border-dashed rounded-xl *:pointer-events-none px-4 py-10 sm:py-14 text-center transition-[border-color,background-color,transform] duration-200 ${
+                                            isDragging ? "border-sign-green bg-sign-green/8 scale-[1.01]" : "border-border-light hover:border-sign-green hover:bg-sign-green/5"
+                                        }`}
                                         onClick={triggerFileInput}
                                         onDragOver={handleDragOver}
+                                        onDragLeave={() => setIsDragging(false)}
                                         onDrop={handleDrop}
                                     >
-                                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
-                                            <Upload className="text-text-secondary" size={28} />
-                                        </div>
-                                        <h3 className="text-xl font-heading font-semibold mb-2">Drag and drop file here</h3>
-                                        <p className="text-text-secondary mb-8">
-                                            {activeTab === "IMAGE" ? "JPG, PNG, WEBP up to 20MB." : "MP4, AVI, MOV up to 100MB."}
-                                        </p>
-                                        <button className="px-8 py-3 bg-text-primary text-white font-bold rounded-sm hover:-translate-y-0.5 transition-transform">Browse Files</button>
-                                    </div>
+                                        <span
+                                            key={isDragging ? "drag" : "idle"}
+                                            className={`mx-auto mb-4 w-16 h-16 rounded-2xl grid place-items-center transition-colors ${
+                                                isDragging ? "animate-pop bg-text-primary text-neutral-background" : "bg-neutral-surface text-text-secondary border border-border-light group-hover:border-sign-green"
+                                            }`}
+                                        >
+                                            <Upload size={28} aria-hidden="true" />
+                                        </span>
+                                        <span className="block text-lg font-heading font-bold mb-1">
+                                            {isDragging ? `Drop to add this ${kind}` : activeTab === "IMAGE" ? "Upload photo" : "Upload video"}
+                                        </span>
+                                        <span className="block text-sm text-text-secondary mb-5">
+                                            Drag a file here or choose one. {activeTab === "IMAGE" ? <>JPG, PNG or WEBP, up to 20&nbsp;MB.</> : <>MP4, AVI or MOV, up to 100&nbsp;MB.</>}
+                                        </span>
+                                        <span className="inline-flex items-center min-h-11 px-6 bg-asphalt text-white text-sm font-bold rounded-lg">Choose file</span>
+                                    </button>
                                 ) : (
-                                    <div className="border border-border-light rounded-xl p-6 flex flex-col md:flex-row items-center gap-6 bg-neutral-surface">
-                                        <div className="w-32 h-32 rounded-lg bg-gray-200 flex-shrink-0 overflow-hidden flex items-center justify-center border border-gray-300">
+                                    <div className="animate-pop rounded-xl border border-border-light overflow-hidden bg-neutral-surface">
+                                        {/* Preview, with the detector's scan line sweeping it while the request runs */}
+                                        <div className="relative bg-asphalt aspect-video flex items-center justify-center overflow-hidden">
                                             {previewUrl && activeTab === "IMAGE" && (
-                                                <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                                                // eslint-disable-next-line @next/next/no-img-element -- dynamic data/API image (local blob: preview)
+                                                <img src={previewUrl} alt="Selected photo" className="w-full h-full object-contain" />
                                             )}
                                             {previewUrl && activeTab === "VIDEO" && (
-                                                <video src={previewUrl} className="w-full h-full object-cover" />
+                                                <video src={previewUrl} className="w-full h-full object-contain" muted playsInline />
+                                            )}
+                                            {isAnalyzing && (
+                                                <>
+                                                    <span aria-hidden="true" className="absolute inset-0 bg-sign-green/15" />
+                                                    {/* Viewfinder corners */}
+                                                    <span aria-hidden="true" className="absolute top-3 left-3 w-6 h-6 border-t-2 border-l-2 border-hazard rounded-tl" />
+                                                    <span aria-hidden="true" className="absolute top-3 right-3 w-6 h-6 border-t-2 border-r-2 border-hazard rounded-tr" />
+                                                    <span aria-hidden="true" className="absolute bottom-3 left-3 w-6 h-6 border-b-2 border-l-2 border-hazard rounded-bl" />
+                                                    <span aria-hidden="true" className="absolute bottom-3 right-3 w-6 h-6 border-b-2 border-r-2 border-hazard rounded-br" />
+                                                    <span aria-hidden="true" className="animate-scan pointer-events-none absolute inset-x-0 h-0.5 bg-hazard shadow-[0_0_14px_3px_color-mix(in_srgb,var(--color-hazard)_60%,transparent)]" />
+                                                    <span className="absolute bottom-4 left-1/2 -translate-x-1/2 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-asphalt/85 text-white text-sm font-semibold">
+                                                        <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                                                        {engine === "road" ? "Looking for hazards…" : "Looking for violations…"}
+                                                    </span>
+                                                </>
                                             )}
                                         </div>
-                                        <div className="flex-1 text-center md:text-left">
-                                            <h3 className="font-semibold text-lg max-w-[200px] md:max-w-sm truncate">{file.name}</h3>
-                                            <p className="text-sm text-text-secondary mb-4">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
-                                            <button 
-                                                onClick={() => { setFile(null); setPreviewUrl(null); setResults(null); setError(null); }}
-                                                className="text-sm font-semibold text-red-500 hover:text-red-700 underline"
-                                            >
-                                                Change File
-                                            </button>
-                                        </div>
 
-                                        {/* Run Button */}
-                                        <div className="w-full md:w-auto mt-4 md:mt-0">
-                                            <button 
+                                        <div className="p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                <span className="w-10 h-10 rounded-lg grid place-items-center flex-shrink-0 bg-surface border border-border-light text-text-secondary">
+                                                    {activeTab === "IMAGE" ? <ImageIcon className="w-5 h-5" aria-hidden="true" /> : <Video className="w-5 h-5" aria-hidden="true" />}
+                                                </span>
+                                                <div className="min-w-0">
+                                                    <p className="font-semibold truncate" title={file.name}>{file.name}</p>
+                                                    <p className="text-sm text-text-secondary tabular-nums">
+                                                        {(file.size / (1024 * 1024)).toFixed(2)}&nbsp;MB
+                                                        <span aria-hidden="true" className="mx-2 text-border-dark">|</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { setFile(null); setPreviewUrl(null); setResults(null); setError(null); }}
+                                                            disabled={isAnalyzing}
+                                                            className="font-semibold text-text-secondary hover:text-text-primary underline underline-offset-2 disabled:opacity-50 disabled:no-underline"
+                                                        >
+                                                            Choose another file
+                                                        </button>
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                type="button"
                                                 onClick={runAnalysis}
                                                 disabled={isAnalyzing}
-                                                className={`w-full px-8 py-4 font-bold rounded-sm shadow-soft transition-all text-white ${
-                                                    isAnalyzing 
-                                                        ? "bg-gray-400 cursor-not-allowed" 
-                                                        : (engine === "road" ? "bg-brand-primary hover:-translate-y-0.5" : "bg-brand-secondary hover:-translate-y-0.5")
-                                                }`}
+                                                className="w-full sm:w-auto min-h-12 px-6 font-bold rounded-lg text-neutral-background bg-text-primary hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2"
                                             >
-                                                {isAnalyzing ? (
-                                                    <span className="flex items-center gap-2 justify-center">
-                                                        <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                        </svg>
-                                                        Processing Model...
-                                                    </span>
-                                                ) : (
-                                                    "Run AI Detection"
-                                                )}
+                                                {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <ScanLine className="w-4 h-4" aria-hidden="true" />}
+                                                {isAnalyzing ? "Scanning…" : engine === "road" ? "Scan for hazards" : "Scan for violations"}
                                             </button>
                                         </div>
+                                        <p className="sr-only" role="status">{isAnalyzing ? `Scanning your ${kind}. This can take a few seconds.` : ""}</p>
                                     </div>
                                 )}
-                                
-                                {/* Error State */}
+
                                 {error && (
-                                    <div className="mt-8 p-6 bg-red-50 border border-red-200 rounded-xl flex gap-4 items-start animate-fade-in">
-                                        <AlertCircle className="text-red-600 flex-shrink-0" size={24} />
+                                    <div role="alert" className="animate-pop mt-6 p-4 bg-signal-red/5 border border-signal-red/40 border-l-4 border-l-signal-red rounded-lg flex gap-3 items-start">
+                                        <CircleAlert className="text-signal-red flex-shrink-0 mt-0.5" size={20} aria-hidden="true" />
                                         <div>
-                                            <h4 className="font-bold text-red-900 mb-1">Analysis Failed</h4>
-                                            <p className="text-sm text-red-700">{error}</p>
+                                            <p className="font-bold text-text-primary">Scan failed</p>
+                                            <p className="text-sm text-text-secondary mt-0.5">{error}</p>
                                         </div>
                                     </div>
                                 )}
                             </div>
                         </div>
 
-                        {/* Results Section */}
+                        {/* Results */}
                         {results && (
-                            <div className="mt-12 animate-fade-in" id="results-panel">
-                                <div className="bg-white rounded-2xl shadow-medium border border-border-light overflow-hidden">
-                                    <div className="px-8 py-6 border-b border-border-light flex justify-between items-center bg-gray-50">
+                            <div className="animate-rise mt-8 bg-surface rounded-xl border border-border-light elevated overflow-hidden" id="results-panel">
+                                <div className="px-4 sm:px-6 py-4 border-b border-border-light flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                                    <div className="min-w-0">
+                                        <h2 className="text-xl font-heading font-bold">Scan result</h2>
+                                        <p className="text-sm text-text-secondary">{results.message}</p>
+                                    </div>
+                                    <div className="flex items-center justify-between sm:justify-end gap-4">
+                                        <div className="text-sm text-text-secondary flex items-center gap-2">
+                                            Overall priority
+                                            <span className="animate-pop [animation-delay:250ms]"><PriorityBadge priority={results.road_priority || results.overall_priority} /></span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (activeTab === "VIDEO" && previewUrl) {
+                                                    setLastVideoBlobUrl(previewUrl);
+                                                    navigatingRef.current = true;
+                                                }
+                                                router.push("/results");
+                                            }}
+                                            className="min-h-11 px-4 bg-asphalt text-white text-sm font-bold rounded-lg hover:bg-asphalt/90 transition-colors"
+                                        >
+                                            See full report
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="p-4 sm:p-6">
+                                    {results.annotated_image_base64 && (
+                                        <div className="relative mb-6 rounded-lg overflow-hidden bg-asphalt">
+                                            {/* eslint-disable-next-line @next/next/no-img-element -- dynamic data/API image */}
+                                            <img
+                                                src={`data:image/jpeg;base64,${results.annotated_image_base64}`}
+                                                alt="Uploaded photo with detected issues outlined"
+                                                className="w-full h-auto object-contain max-h-[600px]"
+                                            />
+                                            <span aria-hidden="true" className="animate-scan-once pointer-events-none absolute inset-x-0 h-0.5 bg-hazard shadow-[0_0_14px_3px_color-mix(in_srgb,var(--color-hazard)_60%,transparent)]" />
+                                        </div>
+                                    )}
+
+                                    {results.detections && results.detections.length > 0 && (
                                         <div>
-                                            <h2 className="text-xl font-heading font-bold">Analysis Report</h2>
-                                            <p className="text-sm text-text-secondary">{results.message}</p>
+                                            <h3 className="font-bold mb-3">Found {results.total_detections} issue{results.total_detections !== 1 ? 's' : ''}</h3>
+                                            <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                {results.detections.map((det, idx) => (
+                                                    <Reveal as="li" key={idx} delay={Math.min(idx, 6) * 70}>
+                                                        <DetectionCard
+                                                            title={det.display_name || prettyClass(det.class_name)}
+                                                            priority={det.priority}
+                                                            confidence={det.confidence}
+                                                            showPlate={engine === "traffic"}
+                                                            plate={det.plate_text}
+                                                        />
+                                                    </Reveal>
+                                                ))}
+                                            </ul>
                                         </div>
-                                        <div className="flex items-center gap-4">
-                                            <div className="text-right">
-                                                <span className="block text-xs font-mono text-text-secondary uppercase">OVERALL PRIORITY</span>
-                                                <span className={`px-3 py-1 mt-1 inline-block rounded-full text-xs font-bold border ${getPriorityColor(results.road_priority || results.overall_priority)}`}>
-                                                    {(results.road_priority || results.overall_priority || "UNKNOWN").toUpperCase()}
-                                                </span>
-                                            </div>
-                                            <button
-                                                onClick={() => {
-                                                    if (activeTab === "VIDEO" && previewUrl) {
-                                                        setLastVideoBlobUrl(previewUrl);
-                                                        navigatingRef.current = true;
-                                                    }
-                                                    router.push("/results");
-                                                }}
-                                                className="px-5 py-2.5 bg-text-primary text-white text-sm font-bold rounded-lg hover:-translate-y-0.5 transition-transform flex items-center gap-2"
-                                            >
-                                                View Full Report
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                                            </button>
+                                    )}
+
+                                    {results.violations && results.violations.length > 0 && (
+                                        <div>
+                                            <h3 className="font-bold mb-3">{results.unique_tracked_violations} unique violation{results.unique_tracked_violations !== 1 ? 's' : ''} tracked</h3>
+                                            <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                {results.violations.map((v, idx) => (
+                                                    <Reveal as="li" key={idx} delay={Math.min(idx, 6) * 70}>
+                                                        <DetectionCard
+                                                            title={v.display_name || prettyClass(v.class_name)}
+                                                            priority={v.priority}
+                                                            confidence={v.confidence}
+                                                            meta={<>Track <span className="font-mono">#{v.track_id}</span>, first seen at {v.first_seen_sec}s</>}
+                                                            showPlate={Boolean(v.plate_text)}
+                                                            plate={v.plate_text}
+                                                        />
+                                                    </Reveal>
+                                                ))}
+                                            </ul>
                                         </div>
-                                    </div>
+                                    )}
 
-                                    <div className="p-8">
-                                        {/* Image Display */}
-                                        {results.annotated_image_base64 && (
-                                            <div className="mb-8 rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-gray-900">
-                                                <img 
-                                                    src={`data:image/jpeg;base64,${results.annotated_image_base64}`} 
-                                                    alt="AI Annotated Result" 
-                                                    className="w-full h-auto object-contain max-h-[600px]"
-                                                />
-                                            </div>
-                                        )}
-
-                                        {/* Detection List (Images) */}
-                                        {results.detections && results.detections.length > 0 && (
-                                            <div>
-                                                <h3 className="font-bold mb-4 flex items-center gap-2">
-                                                    <BadgeInfo size={18} className="text-brand-primary" />
-                                                    Detected Objects ({results.total_detections})
-                                                </h3>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    {results.detections.map((det: any, idx: number) => (
-                                                        <div key={idx} className="p-4 rounded-lg bg-neutral-surface border border-border-light flex justify-between items-start">
-                                                            <div>
-                                                                <span className="font-bold flex items-center gap-2">
-                                                                    {det.display_name || det.class_name.split("_").join(" ").toUpperCase()}
-                                                                </span>
-                                                                <span className="text-xs text-text-secondary">Confidence: {(det.confidence * 100).toFixed(1)}%</span>
-                                                                
-                                                                {/* Optional text like OCR */}
-                                                                {det.plate_text && (
-                                                                    <div className="mt-2 text-sm font-mono bg-yellow-100 text-yellow-800 px-2 py-1 rounded inline-block border border-yellow-300">
-                                                                        OCR: {det.plate_text}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${getPriorityColor(det.priority)}`}>
-                                                                {det.priority}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Unique Violations (Video / Traffic) */}
-                                        {results.violations && results.violations.length > 0 && (
-                                            <div>
-                                                <h3 className="font-bold mb-4 flex items-center gap-2">
-                                                    <BadgeInfo size={18} className="text-brand-secondary" />
-                                                    Unique Tracked Violations ({results.unique_tracked_violations})
-                                                </h3>
-                                                <div className="grid grid-cols-1 gap-4">
-                                                    {results.violations.map((v: any, idx: number) => (
-                                                        <div key={idx} className="p-4 rounded-lg bg-neutral-surface border border-border-light flex justify-between items-center">
-                                                            <div>
-                                                                <div className="flex items-center gap-3">
-                                                                    <span className="font-bold text-lg">{v.display_name || v.class_name.split("_").join(" ").toUpperCase()}</span>
-                                                                    <span className="text-xs bg-gray-200 px-2 py-0.5 rounded font-mono">Track #{v.track_id}</span>
-                                                                </div>
-                                                                <div className="text-sm text-text-secondary mt-1">
-                                                                    First seen at {v.first_seen_sec}s
-                                                                </div>
-                                                                {v.plate_text && (
-                                                                    <div className="mt-2 text-sm font-mono bg-yellow-100 text-yellow-800 px-2 py-1 rounded inline-block border border-yellow-300">
-                                                                        OCR: {v.plate_text}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                            <span className={`px-3 py-1 rounded text-xs font-bold uppercase border ${getPriorityColor(v.priority)}`}>
-                                                                {v.priority}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Empty State */}
-                                        {results.total_detections === 0 && (
-                                            <div className="text-center py-12">
-                                                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                                    <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-                                                </div>
-                                                <h3 className="text-lg font-bold">All Clear</h3>
-                                                <p className="text-text-secondary">No issues or violations were detected in this media.</p>
-                                            </div>
-                                        )}
-                                    </div>
+                                    {results.total_detections === 0 && (
+                                        <EmptyState
+                                            title="Nothing found"
+                                            action={
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { prefillFromScan(results, engine, file?.name ?? "scan"); router.push("/complaints?prefill=1"); }}
+                                                    className="inline-flex items-center min-h-11 px-5 border border-border-light rounded-lg text-sm font-bold hover:border-border-dark transition-colors"
+                                                >
+                                                    Report a hazard
+                                                </button>
+                                            }
+                                        >
+                                            The AI did not detect any hazards or violations. If you can see a problem, report it yourself.
+                                        </EmptyState>
+                                    )}
                                 </div>
                             </div>
                         )}

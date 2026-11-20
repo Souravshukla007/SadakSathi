@@ -1,31 +1,23 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { verifyToken } from '@/lib/jwt';
 import { prisma } from '@/lib/prisma';
+import { mediaUrlsFor, omitMedia } from '@/lib/complaintMedia';
+import { requireUser } from '@/lib/session';
 
 export async function GET() {
     try {
-        const cookieStore = await cookies();
-        const token = cookieStore.get('auth_token')?.value;
-
-        if (!token) {
-            return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-        }
-
-        const payload = await verifyToken(token);
-        if (!payload || !payload.id) {
-            return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-        }
-
-        const userId = payload.id as string;
+        const session = await requireUser();
+        if (session instanceof NextResponse) return session;
+        const userId = session.id;
 
         const complaints = await prisma.complaint.findMany({
+            omit: omitMedia,
             where: { userId },
             orderBy: { createdAt: 'desc' },
             include: {
                 _count: { select: { upvotes: true } },
             },
         });
+        const urls = await mediaUrlsFor(complaints.map(c => c.id));
 
         const result = complaints.map((c) => ({
             id: c.id,
@@ -36,7 +28,7 @@ export async function GET() {
             state: c.state,
             status: c.status,
             remarks: c.remarks,
-            evidenceUrl: c.evidenceUrl,
+            evidenceUrl: urls(c.id).evidenceUrl,
             latitude: c.latitude,
             longitude: c.longitude,
             createdAt: c.createdAt,

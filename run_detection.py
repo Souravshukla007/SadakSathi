@@ -2,8 +2,8 @@
 Standalone detection script.
 Runs both road-hazard models on an image and saves annotated results.
 
-Usage:
-    python run_detection.py
+Usage (Windows or Linux):
+    python run_detection.py path/to/image.jpg
 """
 
 import sys
@@ -11,7 +11,10 @@ from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 ROOT        = Path(__file__).resolve().parent
-IMAGE_PATH  = Path(r"C:\Users\Hello\Downloads\garbage.jpg")
+if len(sys.argv) != 2:
+    print("Usage: python run_detection.py path/to/image.jpg")
+    sys.exit(2)
+IMAGE_PATH  = Path(sys.argv[1]).expanduser().resolve()
 
 MODEL_NANO  = ROOT / "backend" / "models" / "best_model_nano_0.81_map@50_score.pt"
 MODEL_WHOLE = ROOT / "backend" / "models" / "best_whole_model_nano.pt"

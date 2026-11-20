@@ -1,9 +1,13 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/AppHeader';
+import StaffNav from '@/components/traffic/StaffNav';
+import StatStrip from '@/components/traffic/StatStrip';
+import Reveal from '@/components/Reveal';
+import { DeskHeader, DonutChart, Panel, TONE, type Tone } from '@/components/traffic/DeskUI';
+import { Car, ChartColumn, ChartPie, Filter, Gauge, ReceiptText, ShieldAlert, type LucideIcon } from 'lucide-react';
 
 interface AnalyticsData {
     totalViolations: number;
@@ -46,108 +50,86 @@ export default function TrafficInsightsPage() {
         fetchInsights();
     }, [router]);
 
+    const funnelMax = Math.max(stats.vehicleCount, stats.totalViolations, stats.totalChallansIssued, 1);
+    const funnel: { label: string; value: number; tone: Tone; icon: LucideIcon }[] = [
+        { label: 'Vehicles scanned', value: stats.vehicleCount, tone: 'neutral', icon: Car },
+        { label: 'Violations detected', value: stats.totalViolations, tone: 'red', icon: ShieldAlert },
+        { label: 'Challans issued', value: stats.totalChallansIssued, tone: 'green', icon: ReceiptText },
+    ];
+    const pctOf = (part: number, whole: number) => `${(part / Math.max(whole, 1) * 100).toFixed(1)}%`;
+
     return (
         <>
             <AppHeader dashboardMode />
-            <main className="flex-grow pt-16 h-screen flex flex-col bg-neutral-surface">
-                <div className="flex-grow flex w-full h-full overflow-hidden">
-                    
-                    {/* Sidebar */}
-                    <aside className="w-64 bg-text-primary text-white hidden lg:flex flex-col h-full z-10 shadow-soft flex-shrink-0">
-                        <div className="p-6 border-b border-white/10">
-                            <div className="text-xl font-heading font-bold flex items-center gap-2">
-                                <span className="text-2xl">🛣️</span> SadakSathi
-                            </div>
-                            <div className="mt-2 text-[10px] text-white/50 font-mono uppercase tracking-widest">Traffic Operations</div>
+            <main id="main-content" className="flex-grow pt-16 min-h-screen bg-neutral-surface lg:pl-64">
+                <StaffNav desk="traffic" />
+                <div className="px-4 py-6 sm:px-6 lg:px-8">
+                    <div className="mx-auto max-w-6xl">
+                        <DeskHeader icon={ChartColumn} title="Traffic insights" description="How many scanned vehicles break a rule, and how many of those get a challan." />
+
+                        <div className="mb-6">
+                            <StatStrip loading={loading} stats={[
+                                { label: 'Vehicles scanned', value: stats.vehicleCount.toLocaleString(), icon: Car, tone: 'neutral' },
+                                { label: 'Violations', value: stats.totalViolations.toLocaleString(), icon: ShieldAlert, tone: 'red' },
+                                { label: 'Average AI confidence', value: `${stats.avgConfidence}%`, icon: Gauge, tone: 'neutral' },
+                                { label: 'Challans issued', value: stats.totalChallansIssued, icon: ReceiptText, tone: 'green', note: `₹${stats.totalChallanAmount.toLocaleString('en-IN')} in fines` },
+                            ]} />
                         </div>
-                        <nav className="flex-grow p-4 space-y-1">
-                            <Link href="/Traffic" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-                                Dashboard
-                            </Link>
-                            <Link href="/upload" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                                Run Detection
-                            </Link>
-                            <Link href="/results?engine=traffic" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                                Last Report
-                            </Link>
-                            <Link href="/Traffic/chat" className="flex items-center gap-3 px-4 py-3 text-white opacity-70 hover:opacity-100 hover:bg-white/5 rounded-lg transition-all">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-                                Chats
-                            </Link>
-                            <Link href="/Traffic/insights" className="flex items-center gap-3 px-4 py-3 bg-brand-primary text-text-primary font-bold rounded-lg transition-all">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                                Insights
-                            </Link>
-                        </nav>
-                    </aside>
 
-                    {/* Main Content */}
-                    <div className="flex-grow p-8 overflow-y-auto">
-                        <div className="max-w-6xl mx-auto">
-                            <div className="flex justify-between items-center mb-8">
-                                <div>
-                                    <h1 className="text-3xl font-heading font-normal tracking-tight">Traffic Insights</h1>
-                                    <p className="text-sm text-text-secondary mt-1">Analytics on traffic violations and e-challans.</p>
-                                </div>
-                            </div>
-
-                            {loading ? (
-                                <div className="p-12 text-center text-text-secondary">
-                                    <div className="inline-block w-8 h-8 border-4 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin mb-3" />
-                                    <p className="text-sm">Loading insights…</p>
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                                        <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                                            <div className="text-[10px] font-mono font-bold text-text-secondary uppercase tracking-wider mb-2">Vehicles Scanned</div>
-                                            <div className="text-3xl font-bold">{stats.vehicleCount.toLocaleString()}</div>
-                                        </div>
-                                        <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                                            <div className="text-[10px] font-mono font-bold text-text-secondary uppercase tracking-wider mb-2">Total Violations</div>
-                                            <div className="text-3xl font-bold text-red-600">{stats.totalViolations.toLocaleString()}</div>
-                                        </div>
-                                        <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                                            <div className="text-[10px] font-mono font-bold text-text-secondary uppercase tracking-wider mb-2">Avg AI Confidence</div>
-                                            <div className="text-3xl font-bold text-brand-primary">{stats.avgConfidence}%</div>
-                                        </div>
-                                        <div className="bg-white p-6 rounded-2xl shadow-soft border border-border-light">
-                                            <div className="text-[10px] font-mono font-bold text-text-secondary uppercase tracking-wider mb-2">Challans Issued</div>
-                                            <div className="text-3xl font-bold text-green-600">{stats.totalChallansIssued}</div>
-                                            <div className="text-xs text-text-secondary mt-1 font-mono">₹{stats.totalChallanAmount.toLocaleString()}</div>
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-white p-8 rounded-2xl shadow-soft border border-border-light">
-                                        <h2 className="font-heading font-bold text-lg mb-6">Enforcement Funnel</h2>
-                                        
-                                        <div className="flex flex-col items-center max-w-md mx-auto space-y-2">
-                                            {/* Stage 1 */}
-                                            <div className="w-full bg-neutral-surface border border-border-light rounded-xl p-4 flex justify-between items-center relative z-10">
-                                                <span className="font-bold text-sm">Vehicles Scanned</span>
-                                                <span className="font-mono">{stats.vehicleCount}</span>
-                                            </div>
-                                            {/* Stage 2 */}
-                                            <div className="w-[85%] bg-red-50 border border-red-100 rounded-xl p-4 flex justify-between items-center relative z-10">
-                                                <span className="font-bold text-sm text-red-700">Violations Detected</span>
-                                                <span className="font-mono text-red-700">{stats.totalViolations}</span>
-                                            </div>
-                                            {/* Stage 3 */}
-                                            <div className="w-[70%] bg-green-50 border border-green-100 rounded-xl p-4 flex justify-between items-center relative z-10">
-                                                <span className="font-bold text-sm text-green-700">Challans Issued</span>
-                                                <span className="font-mono text-green-700">{stats.totalChallansIssued}</span>
-                                            </div>
-                                        </div>
-                                        
-                                        <p className="text-center text-xs text-text-secondary mt-8">
-                                            {(stats.totalViolations / Math.max(stats.vehicleCount, 1) * 100).toFixed(1)}% violation rate.
-                                        </p>
-                                    </div>
-                                </>
-                            )}
+                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+                            <Reveal className="lg:col-span-3">
+                                <Panel title="Enforcement funnel" icon={Filter} className="h-full">
+                                    {loading ? (
+                                        <p className="py-12 text-center text-sm text-text-secondary">Loading insights…</p>
+                                    ) : (
+                                        <>
+                                            <ol className="space-y-4">
+                                                {funnel.map((f, i) => (
+                                                    <li key={f.label} className="flex items-center gap-3">
+                                                        <span className={`inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${TONE[f.tone].chip}`} aria-hidden="true">
+                                                            <f.icon className="h-4 w-4" />
+                                                        </span>
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
+                                                                <span className="font-semibold">{f.label}</span>
+                                                                <span className="tabular-nums">
+                                                                    <span className="font-semibold">{f.value.toLocaleString()}</span>
+                                                                    {i > 0 && <span className="ml-1.5 text-text-secondary">{pctOf(f.value, funnel[i - 1].value)} of {funnel[i - 1].label.split(" ")[0].toLowerCase()}</span>}
+                                                                </span>
+                                                            </div>
+                                                            <div className="h-3 overflow-hidden rounded-full bg-neutral-surface" aria-hidden="true">
+                                                                <div
+                                                                    className={`h-full rounded-full bg-current animate-rise ${TONE[f.tone].mark}`}
+                                                                    style={{ width: `${Math.max((f.value / funnelMax) * 100, 1)}%`, animationDelay: `${i * 80}ms` }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                ))}
+                                            </ol>
+                                            <p className="mt-6 rounded-lg bg-neutral-surface px-4 py-3 text-sm text-text-secondary">
+                                                Violation rate: <span className="font-semibold text-text-primary tabular-nums">{pctOf(stats.totalViolations, stats.vehicleCount)}</span> of scanned vehicles.
+                                            </p>
+                                        </>
+                                    )}
+                                </Panel>
+                            </Reveal>
+                            <Reveal delay={70} className="lg:col-span-2">
+                                <Panel title="Violations with a challan" icon={ChartPie} tone="amber" className="h-full">
+                                    {loading ? (
+                                        <p className="py-12 text-center text-sm text-text-secondary">Loading insights…</p>
+                                    ) : (
+                                        <DonutChart
+                                            centerValue={pctOf(stats.totalChallansIssued, stats.totalViolations)}
+                                            centerLabel="have a challan"
+                                            segments={[
+                                                { label: 'Challan issued', value: stats.totalChallansIssued, tone: 'green' },
+                                                { label: 'No challan yet', value: Math.max(stats.totalViolations - stats.totalChallansIssued, 0), tone: 'amber' },
+                                            ]}
+                                        />
+                                    )}
+                                </Panel>
+                            </Reveal>
                         </div>
                     </div>
                 </div>

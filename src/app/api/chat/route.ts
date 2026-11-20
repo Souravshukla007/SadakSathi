@@ -1,24 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { verifyToken } from '@/lib/jwt';
 import { prisma } from '@/lib/prisma';
+import { getSessionUser, type SessionUser } from '@/lib/session';
+import { TRAFFIC_ISSUE_TYPES } from '@/lib/traffic';
 
-// Helper to get authenticated user
-async function getUser() {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth_token')?.value;
-    if (!token) return null;
-    try {
-        return await verifyToken(token);
-    } catch {
-        return null;
-    }
+const DEPARTMENTS = ['municipal', 'traffic'];
+const MAX_MESSAGE_LENGTH = 2000;
+
+// Authorities only see their own department's threads; admin sees all; citizens only their own threads.
+function canAccessThread(user: SessionUser, thread: { userId: string; department: string }) {
+    if (user.role === 'admin') return true;
+    if (user.role === 'municipal' || user.role === 'traffic') return thread.department === user.role;
+    return thread.userId === user.id;
 }
+
+const isStaff = (role: string) => role === 'municipal' || role === 'traffic' || role === 'admin';
 
 export async function GET(req: NextRequest) {
     try {
-        const user = await getUser();
-        if (!user || !user.id) {
+        const user = await getSessionUser();
+        if (!user) {
             return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
         }
 
@@ -36,14 +36,14 @@ export async function GET(req: NextRequest) {
             if (!thread) return NextResponse.json({ message: 'Thread not found' }, { status: 404 });
 
             // Security check
-            if (user.role !== 'municipal' && user.role !== 'traffic' && thread.userId !== user.id) {
+            if (!canAccessThread(user, thread)) {
                 return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
             }
             return NextResponse.json({ messages: thread.messages });
         }
 
         // --- CITIZEN: complaint-specific thread ---
-        if (complaintId && user.role !== 'municipal' && user.role !== 'traffic') {
+        if (complaintId && !isStaff(user.role)) {
             // Verify the citizen owns this complaint
             const complaint = await prisma.complaint.findUnique({
                 where: { id: complaintId },
@@ -52,21 +52,21 @@ export async function GET(req: NextRequest) {
             if (!complaint) {
                 return NextResponse.json({ message: 'Complaint not found' }, { status: 404 });
             }
-            if (complaint.userId !== (user.id as string)) {
+            if (complaint.userId !== (user.id)) {
                 return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
             }
 
             // Find or create a thread scoped to this complaint
             let thread = await prisma.chatThread.findFirst({
-                where: { userId: user.id as string, complaintId },
+                where: { userId: user.id, complaintId }, orderBy: { createdAt: 'asc' }, // oldest wins if two were ever created
                 include: { messages: { orderBy: { createdAt: 'asc' } } }
             });
 
             if (!thread) {
                 thread = await prisma.chatThread.create({
                     data: {
-                        userId: user.id as string,
-                        department: 'municipal',
+                        userId: user.id,
+                        department: TRAFFIC_ISSUE_TYPES.includes(complaint.issueType) ? 'traffic' : 'municipal', // the desk that handles this report
                         complaintId
                     },
                     include: { messages: true }
@@ -81,12 +81,14 @@ export async function GET(req: NextRequest) {
         }
 
         // Return threads based on role
-        if (user.role !== 'municipal' && user.role !== 'traffic') {
-            if (!department) return NextResponse.json({ message: 'Department required' }, { status: 400 });
+        if (!isStaff(user.role)) {
+            if (!department || !DEPARTMENTS.includes(department)) {
+                return NextResponse.json({ message: 'department must be municipal or traffic' }, { status: 400 });
+            }
 
             // For a citizen, they only have 1 main thread per department (general chat).
             let thread = await prisma.chatThread.findFirst({
-                where: { userId: user.id as string, department, complaintId: null },
+                where: { userId: user.id, department, complaintId: null }, orderBy: { createdAt: 'asc' },
                 include: { messages: { orderBy: { createdAt: 'asc' } } }
             });
 
@@ -94,7 +96,7 @@ export async function GET(req: NextRequest) {
             if (!thread) {
                 thread = await prisma.chatThread.create({
                     data: {
-                        userId: user.id as string,
+                        userId: user.id,
                         department,
                         complaintId: null
                     },
@@ -106,7 +108,7 @@ export async function GET(req: NextRequest) {
             // For authorities (Municipal/Traffic)
             // Return all threads for their department, including latest message and user details
             const threads = await prisma.chatThread.findMany({
-                where: { department: user.role as string },
+                where: user.role === 'admin' ? {} : { department: user.role },
                 include: {
                     messages: { orderBy: { createdAt: 'desc' }, take: 1 }
                 },
@@ -150,8 +152,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
     try {
-        const user = await getUser();
-        if (!user || !user.id) {
+        const user = await getSessionUser();
+        if (!user) {
             return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
         }
 
@@ -161,6 +163,9 @@ export async function POST(req: NextRequest) {
         if (!threadId || !text) {
             return NextResponse.json({ message: 'Missing threadId or text' }, { status: 400 });
         }
+        if (typeof text !== 'string' || text.length > MAX_MESSAGE_LENGTH) {
+            return NextResponse.json({ message: `text must be a string of at most ${MAX_MESSAGE_LENGTH} characters` }, { status: 400 });
+        }
 
         const thread = await prisma.chatThread.findUnique({ where: { id: threadId } });
         if (!thread) {
@@ -168,15 +173,15 @@ export async function POST(req: NextRequest) {
         }
 
         // Security check
-        if (user.role !== 'municipal' && user.role !== 'traffic' && thread.userId !== user.id) {
+        if (!canAccessThread(user, thread)) {
             return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
         }
 
         const message = await prisma.chatMessage.create({
             data: {
                 threadId,
-                senderId: user.id as string,
-                senderRole: user.role as string,
+                senderId: user.id,
+                senderRole: user.role,
                 text
             }
         });

@@ -99,114 +99,31 @@ export interface TrafficVideoAssessmentResponse {
   message: string;
 }
 
-export interface FastAPIStats {
-  total_uploads: number;
-  road_uploads: number;
-  traffic_uploads: number;
-  total_detections: number;
-  high_priority_count: number;
-  medium_priority_count: number;
-  low_priority_count: number;
-  class_counts: Record<string, number>;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  API Functions
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function callDetect(
-  file: File,
-  engine: "road" | "traffic",
-  mediaType: "image" | "video",
-  extraFields: Record<string, string> = {}
-): Promise<Response> {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("conf_threshold", "0.25");
-  for (const [key, val] of Object.entries(extraFields)) {
-    formData.append(key, val);
-  }
-  return fetch(`/api/ml/detect?engine=${engine}&mediaType=${mediaType}`, {
-    method: "POST",
-    body: formData,
-  });
-}
-
-export async function detectRoadImage(
-  file: File,
-  conf = 0.25
-): Promise<ImageAssessmentResponse> {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("conf_threshold", String(conf));
-  formData.append("include_annotated", "true");
-  const res = await fetch(`/api/ml/detect?engine=road&mediaType=image`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.message ?? err?.detail ?? `HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
-export async function detectRoadVideo(
-  file: File,
-  conf = 0.25
-): Promise<VideoAssessmentResponse> {
-  const res = await callDetect(file, "road", "video", {
-    conf_threshold: String(conf),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.message ?? err?.detail ?? `HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
-export async function detectTrafficImage(
-  file: File,
-  conf = 0.25,
-  runOcr = true
-): Promise<TrafficAssessmentResponse> {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("conf_threshold", String(conf));
-  formData.append("include_annotated", "true");
-  formData.append("run_ocr", String(runOcr));
-  const res = await fetch(`/api/ml/detect?engine=traffic&mediaType=image`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.message ?? err?.detail ?? `HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
-export async function detectTrafficVideo(
-  file: File,
-  conf = 0.25,
-  tracker = "bytetrack.yaml"
-): Promise<TrafficVideoAssessmentResponse> {
-  const res = await callDetect(file, "traffic", "video", {
-    conf_threshold: String(conf),
-    tracker,
-    run_ocr: "true",
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.message ?? err?.detail ?? `HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
-export async function fetchMLStats(): Promise<FastAPIStats> {
-  const res = await fetch("/api/ml/stats", { cache: "no-store" });
-  if (!res.ok) throw new Error("Could not reach FastAPI /stats");
-  return res.json();
+// Every field the four ML response shapes may carry; StoredDetection.result is a
+// union of them, so pages read it through this optional-field view.
+export type MlDetectionRow = Pick<TrafficDetection, "id" | "class_name" | "confidence" | "bbox" | "priority"> & {
+  display_name?: string;
+  plate_text?: string | null;
+};
+export interface MlResultView {
+  success?: boolean;
+  message?: string;
+  annotated_image_base64?: string | null;
+  detections?: MlDetectionRow[];
+  violations?: UniqueViolation[];
+  total_detections?: number;
+  road_priority?: string;
+  overall_priority?: string;
+  priority_counts?: Record<string, number>;
+  class_counts?: Record<string, number>;
+  unique_tracked_violations?: number;
+  total_frames_analyzed?: number;
+  summary?: {
+    priority_counts?: Record<string, number>;
+    class_counts?: Record<string, number>;
+    fps?: number;
+    sample_rate?: number;
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -266,8 +183,8 @@ export function saveDetectionResult(
 
     const history = getDetectionHistory();
     history.unshift(entry);           // newest first
-    // Keep last 50 runs
-    sessionStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 50)));
+    // Each run carries an annotated image; sessionStorage is ~5 MB, so keep only the last 5.
+    sessionStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 5)));
   } catch {
     // Storage quota exceeded — silently ignore
   }
@@ -293,14 +210,6 @@ export function getDetectionHistory(): StoredDetection[] {
   }
 }
 
-export function clearDetectionHistory(): void {
-  try {
-    sessionStorage.removeItem(LAST_KEY);
-    sessionStorage.removeItem(HISTORY_KEY);
-  } catch {
-    // noop
-  }
-}
 
 /** Relative time string — e.g. "2 mins ago" */
 export function relativeTime(isoString: string): string {
@@ -333,6 +242,18 @@ export function saveComplaintPrefill(data: ComplaintPrefill): void {
   } catch {
     // Storage quota exceeded — silently ignore
   }
+}
+
+/** Carry a scan into the report form: its marked-up photo and what it found. Used by /upload and /results. */
+export function prefillFromScan(result: MlResultView, engine: "road" | "traffic", fileName: string): void {
+  const detections: { class_name?: string }[] = result.detections ?? result.violations ?? [];
+  if (!result.annotated_image_base64) return; // nothing to attach; the form still opens
+  saveComplaintPrefill({
+    imageDataUrl: `data:image/jpeg;base64,${result.annotated_image_base64}`,
+    engine,
+    fileName,
+    detectedClasses: [...new Set(detections.map((d) => d.class_name ?? "").filter(Boolean))],
+  });
 }
 
 export function getComplaintPrefill(): ComplaintPrefill | null {

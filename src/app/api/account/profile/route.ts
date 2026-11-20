@@ -1,20 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { verifyToken } from '@/lib/jwt';
 import { prisma } from '@/lib/prisma';
+import { rankOf } from '@/lib/leaderboard';
+import { requireUser } from '@/lib/session';
 
 export async function GET() {
     try {
-        const cookieStore = await cookies();
-        const token = cookieStore.get('auth_token')?.value;
-        if (!token) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+        const session = await requireUser();
+        if (session instanceof NextResponse) return session;
+        const userId = session.id;
 
-        const payload = await verifyToken(token);
-        if (!payload?.id) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-
-        const userId = payload.id as string;
-
-        const [user, complaintCount, upvoteCount, activities] = await Promise.all([
+        const [user, complaintCount, resolvedCount, activities] = await Promise.all([
             prisma.user.findUnique({
                 where: { id: userId },
                 select: {
@@ -24,7 +19,7 @@ export async function GET() {
                 },
             }),
             prisma.complaint.count({ where: { userId } }),
-            prisma.upvote.count({ where: { userId } }),
+            prisma.complaint.count({ where: { userId, status: { in: ['Completed', 'ResolvedReviewed'] } } }),
             prisma.userActivity.findMany({
                 where: { userId },
                 orderBy: { createdAt: 'desc' },
@@ -34,21 +29,15 @@ export async function GET() {
 
         if (!user) return NextResponse.json({ message: 'User not found' }, { status: 404 });
 
-        // Compute leaderboard rank by complaint count
-        const usersRanked = await prisma.complaint.groupBy({
-            by: ['userId'],
-            _count: { id: true },
-            orderBy: { _count: { id: 'desc' } },
-        });
-        const rank = usersRanked.findIndex((u) => u.userId === userId) + 1;
+        const { rank, upvotes } = await rankOf(userId);
 
         return NextResponse.json({
             user,
             stats: {
                 complaintsSubmitted: complaintCount,
-                upvotesReceived: upvoteCount,
-                leaderboardRank: rank || 1,
-                reportsGenerated: Math.floor(complaintCount * 0.6),
+                upvotesReceived: upvotes,
+                leaderboardRank: rank,
+                reportsResolved: resolvedCount,
             },
             activities,
         });
@@ -60,19 +49,25 @@ export async function GET() {
 
 export async function PUT(req: NextRequest) {
     try {
-        const cookieStore = await cookies();
-        const token = cookieStore.get('auth_token')?.value;
-        if (!token) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-
-        const payload = await verifyToken(token);
-        if (!payload?.id) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-
-        const userId = payload.id as string;
+        const session = await requireUser();
+        if (session instanceof NextResponse) return session;
+        const userId = session.id;
         const { fullName, phone, city, state } = await req.json();
+
+        for (const v of [fullName, phone, city, state]) {
+            if (v != null && (typeof v !== 'string' || v.length > 100)) {
+                return NextResponse.json({ message: 'Profile fields must be text up to 100 characters.' }, { status: 400 });
+            }
+        }
+        if (fullName === null || (typeof fullName === 'string' && !fullName.trim())) {
+            return NextResponse.json({ message: 'Full name cannot be empty.' }, { status: 400 });
+        }
 
         const updated = await prisma.user.update({
             where: { id: userId },
             data: { fullName, phone, city, state },
+            // never echo passwordHash back to the client
+            select: { id: true, username: true, fullName: true, email: true, role: true, phone: true, city: true, state: true },
         });
 
         // Log activity

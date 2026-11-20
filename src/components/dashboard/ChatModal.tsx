@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
+import { CircleAlert, Loader2, MessageSquare, Send, X } from 'lucide-react';
 
 interface ChatMessage {
     id: string;
@@ -32,14 +33,14 @@ export default function ChatModal({ complaintId, onClose }: ChatModalProps) {
                 const res = await fetch(`/api/chat?complaintId=${complaintId}`);
                 if (!res.ok) {
                     const data = await res.json();
-                    setError(data.message || 'Failed to load chat.');
+                    setError(data.message || 'The chat for this report did not load.');
                     return;
                 }
                 const data = await res.json();
                 setThreadId(data.threadId);
                 setMessages(data.messages || []);
             } catch {
-                setError('Failed to connect to chat server.');
+                setError('The chat server could not be reached.');
             } finally {
                 setLoading(false);
             }
@@ -103,74 +104,72 @@ export default function ChatModal({ complaintId, onClose }: ChatModalProps) {
 
     return (
         <div
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-asphalt/60 p-0 sm:p-4"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden"
-                style={{ height: '520px' }}>
+            <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="chat-modal-title"
+                className="animate-rise bg-surface rounded-t-xl sm:rounded-xl shadow-medium w-full max-w-lg flex flex-col overflow-hidden h-[85vh] sm:h-[520px]"
+            >
 
                 {/* Header */}
-                <div className="px-5 py-4 border-b border-border-light bg-white flex items-center justify-between shrink-0">
-                    <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 bg-brand-primary/10 rounded-xl flex items-center justify-center">
-                            <svg className="w-5 h-5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                            </svg>
-                        </div>
-                        <div>
-                            <h3 className="font-heading font-bold text-sm leading-tight">Chat with Authority</h3>
-                            <p className="text-[11px] text-text-secondary font-mono">
-                                Complaint #{complaintId.slice(-8).toUpperCase()}
+                <div className="road-glow relative px-4 sm:px-5 py-3.5 border-b border-border-light flex items-center justify-between gap-3 shrink-0">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <span className="w-10 h-10 rounded-lg grid place-items-center bg-sign-green/10 text-sign-green flex-shrink-0"><MessageSquare className="w-5 h-5" aria-hidden="true" /></span>
+                        <div className="min-w-0">
+                            <h3 id="chat-modal-title" className="font-heading font-bold text-base leading-tight">Chat with the department</h3>
+                            <p className="text-xs text-text-secondary">
+                                Report <span className="font-mono">#{complaintId.slice(-8).toUpperCase()}</span>
                             </p>
                         </div>
                     </div>
                     <button
+                        type="button"
                         onClick={onClose}
-                        className="text-text-secondary hover:text-text-primary transition-colors p-1 rounded-lg hover:bg-neutral-surface"
+                        className="w-11 h-11 -mr-2 grid place-items-center text-text-secondary hover:text-text-primary transition-colors rounded-lg hover:bg-neutral-surface"
                         aria-label="Close chat"
                     >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
+                        <X className="w-5 h-5" aria-hidden="true" />
                     </button>
                 </div>
 
                 {/* Body */}
-                <div className="flex-grow overflow-y-auto p-4 space-y-3 bg-gray-50/60">
+                <div className="flex-grow overflow-y-auto p-4 space-y-3 bg-neutral-surface" aria-live="polite">
                     {loading ? (
                         <div className="flex flex-col items-center justify-center h-full gap-3 text-text-secondary">
-                            <div className="w-7 h-7 border-2 border-brand-primary border-t-transparent rounded-full animate-spin" />
-                            <p className="text-xs">Connecting to chat…</p>
+                            <Loader2 className="w-6 h-6 animate-spin text-sign-green" aria-hidden="true" />
+                            <p className="text-sm">Opening chat…</p>
                         </div>
                     ) : error ? (
-                        <div className="flex flex-col items-center justify-center h-full gap-2 text-red-500">
-                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <p className="text-sm font-medium">{error}</p>
+                        <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-6">
+                            <CircleAlert className="w-7 h-7 text-signal-red" aria-hidden="true" />
+                            <p className="text-sm font-semibold text-text-primary">Chat could not be opened</p>
+                            <p className="text-sm text-text-secondary">{error} Close this window and try again.</p>
                         </div>
                     ) : messages.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full gap-2 text-text-secondary">
-                            <div className="text-4xl">💬</div>
-                            <p className="text-sm font-medium">No messages yet</p>
-                            <p className="text-xs">Be the first to send a message about this complaint.</p>
+                        <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-6 text-text-secondary">
+                            <MessageSquare className="w-7 h-7" aria-hidden="true" />
+                            <p className="text-sm font-semibold text-text-primary">No messages yet</p>
+                            <p className="text-sm">Ask a question or add details about this report. The department replies here.</p>
                         </div>
                     ) : (
                         messages.map((m) => {
                             const isMe = m.senderRole !== 'municipal' && m.senderRole !== 'traffic';
                             return (
-                                <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-[78%] rounded-2xl px-4 py-2.5 ${isMe
-                                        ? 'bg-brand-primary text-text-primary rounded-br-sm'
-                                        : 'bg-white border border-border-light text-text-primary rounded-bl-sm shadow-sm'
+                                <div key={m.id} className={`animate-rise flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                    <div className={`max-w-[85%] sm:max-w-[78%] rounded-xl px-3.5 py-2.5 ${isMe
+                                        ? 'bg-text-primary text-neutral-background rounded-br-sm'
+                                        : 'bg-surface border border-border-light text-text-primary rounded-bl-sm'
                                         }`}>
                                         {!isMe && (
-                                            <p className="text-[10px] font-bold text-brand-primary mb-1 uppercase tracking-wide">
-                                                Authority
+                                            <p className="text-xs font-semibold text-sign-green mb-1">
+                                                {m.senderRole === 'traffic' ? 'Traffic department' : 'Municipal department'}
                                             </p>
                                         )}
-                                        <p className="text-sm whitespace-pre-wrap leading-relaxed">{m.text}</p>
-                                        <p className={`text-[10px] mt-1.5 ${isMe ? 'text-text-primary/60' : 'text-text-secondary'} text-right`}>
+                                        <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{m.text}</p>
+                                        <p className={`text-xs mt-1.5 ${isMe ? 'text-white/80' : 'text-text-secondary'} text-right`}>
                                             {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </p>
                                     </div>
@@ -182,29 +181,28 @@ export default function ChatModal({ complaintId, onClose }: ChatModalProps) {
                 </div>
 
                 {/* Input */}
-                <div className="p-3 border-t border-border-light bg-white shrink-0">
+                <div className="p-3 border-t border-border-light bg-surface shrink-0">
                     <form onSubmit={handleSend} className="flex gap-2">
+                        <label htmlFor="chat-modal-input" className="sr-only">Message</label>
                         <input
+                            id="chat-modal-input"
                             ref={inputRef}
                             type="text"
                             value={inputText}
                             onChange={(e) => setInputText(e.target.value)}
-                            placeholder={threadId ? 'Type a message…' : 'Connecting…'}
+                            placeholder={threadId ? 'Write a message' : 'Opening chat…'}
                             disabled={!threadId || sending || loading}
-                            className="flex-grow px-4 py-2.5 bg-neutral-surface border border-border-light rounded-xl focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary text-sm disabled:opacity-60"
+                            className="min-w-0 flex-grow min-h-11 px-3.5 bg-surface border border-border-light rounded-lg focus:outline-none focus:border-sign-green text-sm disabled:bg-neutral-surface"
                         />
                         <button
                             type="submit"
+                            aria-label="Send message"
                             disabled={!inputText.trim() || !threadId || sending || loading}
-                            className="px-4 py-2.5 bg-text-primary text-white font-bold rounded-xl hover:bg-text-primary/90 transition-colors disabled:opacity-40 flex items-center gap-1.5"
+                            className="min-h-11 min-w-11 px-3.5 bg-text-primary text-neutral-background font-bold rounded-lg hover:opacity-90 transition-colors disabled:opacity-40 flex items-center justify-center"
                         >
-                            {sending ? (
-                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                                </svg>
-                            )}
+                            {sending
+                                ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                                : <Send className="w-4 h-4" aria-hidden="true" />}
                         </button>
                     </form>
                 </div>

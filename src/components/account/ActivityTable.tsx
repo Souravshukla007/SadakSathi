@@ -1,4 +1,7 @@
 import React from 'react';
+import Link from 'next/link';
+import { ClipboardList, Image as ImageIcon, Lock, Plus, UserPen, type LucideIcon } from 'lucide-react';
+import EmptyState from '@/components/dashboard/EmptyState';
 
 interface Activity {
     id: string;
@@ -11,60 +14,54 @@ interface ActivityTableProps {
     activities: Activity[];
 }
 
-const ACTION_ICONS: Record<string, string> = {
-    'Complaint Submitted': 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2',
-    'Profile Updated': 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
-    'Avatar Updated': 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z',
-    'Password Changed': 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z',
+const ACTION_ICONS: Record<string, LucideIcon> = {
+    'Complaint Submitted': ClipboardList,
+    'Profile Updated': UserPen,
+    'Avatar Updated': ImageIcon,
+    'Password Changed': Lock,
 };
 
-const MOCK_ACTIVITIES: Activity[] = [
-    { id: '1', action: 'Complaint Submitted', details: 'Wardha Road pothole reported.', createdAt: new Date(Date.now() - 3600000).toISOString() },
-    { id: '2', action: 'Profile Updated', details: 'Profile information was changed.', createdAt: new Date(Date.now() - 7200000).toISOString() },
-    { id: '3', action: 'Complaint Submitted', details: 'MG Road waterlogging.', createdAt: new Date(Date.now() - 86400000).toISOString() },
-];
-
 export default function ActivityTable({ activities }: ActivityTableProps) {
-    const items = activities.length > 0 ? activities : MOCK_ACTIVITIES;
-
     const formatTime = (iso: string) =>
         new Date(iso).toLocaleString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, day: '2-digit', month: 'short' });
 
     return (
-        <div className="bg-white rounded-2xl shadow-soft border border-border-light overflow-hidden">
-            <div className="px-6 py-4 border-b border-border-light">
-                <h3 className="font-heading font-bold">Account Activity</h3>
-                <p className="text-xs text-text-secondary mt-0.5">Your recent account actions</p>
+        <div className="bg-surface rounded-xl border border-border-light elevated">
+            <div className="px-4 sm:px-6 py-4 border-b border-border-light">
+                <h3 className="font-heading font-bold">Recent activity</h3>
+                <p className="text-sm text-text-secondary mt-0.5">Reports, profile and password changes on your account</p>
             </div>
-            <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                    <thead>
-                        <tr className="text-[10px] font-mono text-text-secondary uppercase bg-neutral-surface border-b border-border-light">
-                            <th className="px-6 py-3">Time</th>
-                            <th className="px-6 py-3">Action</th>
-                            <th className="px-6 py-3">Details</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border-light">
-                        {items.map((a) => (
-                            <tr key={a.id} className="hover:bg-neutral-surface/50 transition-colors">
-                                <td className="px-6 py-4 text-xs font-mono text-text-secondary whitespace-nowrap">{formatTime(a.createdAt)}</td>
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-7 h-7 rounded-lg bg-brand-primary/10 flex items-center justify-center flex-shrink-0">
-                                            <svg className="w-3.5 h-3.5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={ACTION_ICONS[a.action] ?? ACTION_ICONS['Profile Updated']} />
-                                            </svg>
-                                        </div>
-                                        <span className="text-sm font-medium">{a.action}</span>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-xs text-text-secondary">{a.details ?? '—'}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+            {activities.length === 0 ? (
+                <EmptyState
+                    title="No activity yet"
+                    action={
+                        <Link href="/complaints" className="inline-flex items-center gap-2 min-h-11 px-5 bg-text-primary text-neutral-background font-bold rounded-lg text-sm hover:opacity-90 transition-colors">
+                            <Plus className="w-4 h-4" aria-hidden="true" />
+                            Report a hazard
+                        </Link>
+                    }
+                >
+                    Reports you send and changes to your profile will be listed here.
+                </EmptyState>
+            ) : (
+                <ul className="divide-y divide-border-light">
+                    {activities.map((a) => {
+                        const Icon = ACTION_ICONS[a.action] ?? UserPen;
+                        return (
+                            <li key={a.id} className="px-4 sm:px-6 py-3.5 flex items-start sm:items-center gap-3 hover:bg-neutral-surface/60 transition-colors">
+                                <span className="w-9 h-9 rounded-lg grid place-items-center bg-sign-green/10 text-sign-green flex-shrink-0">
+                                    <Icon className="w-4 h-4" aria-hidden="true" />
+                                </span>
+                                <div className="min-w-0 flex-1 sm:flex sm:items-baseline sm:gap-4">
+                                    <p className="text-sm font-semibold sm:w-44 sm:flex-shrink-0">{a.action.charAt(0) + a.action.slice(1).toLowerCase()}</p>
+                                    <p className="text-sm text-text-secondary sm:flex-1 break-words">{a.details ?? ''}</p>
+                                    <p className="text-xs text-text-secondary mt-0.5 sm:mt-0 whitespace-nowrap">{formatTime(a.createdAt)}</p>
+                                </div>
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
         </div>
     );
 }

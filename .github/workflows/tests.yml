@@ -8,7 +8,10 @@ on:
 
 jobs:
   frontend:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -23,11 +26,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Type-check
+        run: npx tsc --noEmit
+
       - name: Run frontend tests
         run: npm test
 
   backend:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -46,3 +55,51 @@ jobs:
       - name: Run backend tests
         working-directory: backend
         run: pytest tests -v --tb=short
+
+  e2e:
+    # Full web flow against a real PostgreSQL (ML checks skipped: no model server in CI).
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sadaksathi
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/sadaksathi?schema=public
+      JWT_SECRET: ci-only-jwt-secret-not-used-anywhere-else
+      AUTHORITY_SEED_PASSWORD: ci-staff-password
+      E2E_SKIP_ML: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create schema and staff accounts
+        run: |
+          npx prisma migrate deploy
+          node seed-authorities.js
+
+      - name: Build and start the app
+        run: |
+          npm run build
+          # Same standalone server the Docker image runs.
+          cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/
+          node .next/standalone/server.js &
+          for i in $(seq 1 60); do curl -sf http://localhost:3000 > /dev/null && break; sleep 1; done
+
+      - name: End-to-end smoke test
+        run: npm run test:e2e

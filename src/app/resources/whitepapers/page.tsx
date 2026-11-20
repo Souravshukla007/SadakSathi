@@ -1,61 +1,65 @@
 import React from 'react';
 import AppHeader from '@/components/AppHeader';
 import AppFooter from '@/components/AppFooter';
-import Link from 'next/link';
+import Reveal from '@/components/Reveal';
+import IconTile from '@/components/landing/IconTile';
+import PageHero from '@/components/landing/PageHero';
+import { FileText, Gauge, GitMerge, ScanText, type LucideIcon } from 'lucide-react';
+
+const NOTES: { title: string; icon: LucideIcon; body: string[] }[] = [
+    {
+        title: 'Spotting duplicate reports',
+        icon: GitMerge,
+        body: [
+            'Only reports within 100 m of the new one are compared; everything farther away is skipped straight away using a grid lookup.',
+            'Each nearby report gets a score from three signals: how similar the photos look (25%), how similar the descriptions read (40%), and how close the two locations are (35%).',
+            'A combined score of 0.68 or more marks the new report as a duplicate and links it to the original. Without a photo the best possible score is 0.75, so text-only reports must be almost identical and within about 5 m.',
+        ],
+    },
+    {
+        title: 'Rating a hazard’s priority',
+        icon: Gauge,
+        body: [
+            'The model outlines each hazard and measures the share of the photo it covers.',
+            'Depth is estimated from the shadow inside the outline: darker and higher-contrast means deeper.',
+            'Open manholes are always high priority; broken signs, broken street lights and overflowing garbage are at least medium.',
+        ],
+    },
+    {
+        title: 'Reading number plates without slowing down',
+        icon: ScanText,
+        body: [
+            'Reading a plate takes about 1.6 seconds on a CPU, too slow to do on every video frame.',
+            'Each vehicle is tracked across frames and given an ID, and its plate is read once for that ID. This cuts plate-reading work by about 95%.',
+        ],
+    },
+];
 
 export default function WhitepapersPage() {
-    const whitepapers = [
-        {
-            title: "Computer Vision in Municipal Governance: A Zero-to-One Approach",
-            date: "October 2025",
-            abstract: "An in-depth analysis of how edge-AI and cloud inference models drastically reduce the time to municipal intervention for critical infrastructure faults like potholes and damaged signage.",
-            tag: "AI & Infrastructure"
-        },
-        {
-            title: "Traffic Violation Automation: Scaling Safety",
-            date: "August 2025",
-            abstract: "Discussing our 98.4% accuracy helmet-detection model and how automating e-challan systems removes bias and increases urban road safety compliance.",
-            tag: "Traffic Enforcement"
-        },
-        {
-            title: "Predictive Road Maintenance with Geospatial AI",
-            date: "March 2025",
-            abstract: "How aggregating crowd-sourced image data over time enables cities to predict pavement degradation before it reaches critical severity thresholds.",
-            tag: "Predictive Analytics"
-        }
-    ];
-
     return (
-        <div className="min-h-screen flex flex-col bg-neutral-surface">
+        <div className="min-h-screen flex flex-col bg-neutral-background">
             <AppHeader />
-            <main className="flex-grow pt-24 pb-16">
-                <div className="max-w-7xl mx-auto px-6">
-                    <div className="mb-12">
-                        <div className="text-brand-primary text-sm font-bold tracking-widest uppercase mb-3">Resources</div>
-                        <h1 className="text-4xl md:text-5xl font-heading font-bold text-text-primary mb-4">Whitepapers</h1>
-                        <p className="text-lg text-text-secondary max-w-2xl">
-                            Explore our deeply researched technical papers on urban mobility, AI inference models, and structural road analytics.
-                        </p>
-                    </div>
+            <main id="main-content" className="flex-grow">
+                <PageHero
+                    title="Technical notes"
+                    icon={FileText}
+                    lead={<>Short explanations of how SadakSathi makes its decisions. Longer papers haven&apos;t been published yet.</>}
+                />
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        {whitepapers.map((wp, i) => (
-                            <div key={i} className="bg-white border border-border-light rounded-2xl p-8 hover:shadow-soft transition-all duration-300 flex flex-col h-full">
-                                <div className="text-xs font-mono font-bold text-brand-primary bg-brand-primary/10 w-max px-3 py-1 rounded-full mb-4">
-                                    {wp.tag}
-                                </div>
-                                <h3 className="text-xl font-heading font-bold text-text-primary mb-3 leading-snug">{wp.title}</h3>
-                                <p className="text-xs text-text-secondary font-mono mb-4">{wp.date}</p>
-                                <p className="text-sm text-text-secondary mb-8 flex-grow">{wp.abstract}</p>
-                                <button className="flex items-center gap-2 text-sm font-bold text-brand-primary hover:text-blue-700 transition-colors mt-auto">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8l-8 8-8-8"/>
-                                    </svg>
-                                    Download PDF
-                                </button>
-                            </div>
-                        ))}
-                    </div>
+                <div className="max-w-3xl mx-auto px-4 sm:px-6 py-14 md:py-20 space-y-6">
+                    {NOTES.map((n, i) => (
+                        <Reveal key={n.title} delay={i * 70}>
+                            <section className="group rounded-xl border border-border-light bg-surface p-6 sm:p-8 elevated lift">
+                                <h2 className="flex items-center gap-4 text-2xl font-heading font-normal tracking-tighter mb-5">
+                                    <IconTile icon={n.icon} />
+                                    {n.title}
+                                </h2>
+                                <ul className="list-disc pl-5 space-y-2 text-text-secondary leading-relaxed marker:text-sign-green">
+                                    {n.body.map((p) => <li key={p}>{p}</li>)}
+                                </ul>
+                            </section>
+                        </Reveal>
+                    ))}
                 </div>
             </main>
             <AppFooter />

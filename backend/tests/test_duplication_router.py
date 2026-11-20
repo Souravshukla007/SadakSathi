@@ -9,10 +9,9 @@ from routers.duplication import router
 class FakeDetector:
     def __init__(self) -> None:
         self.reports_db = [object()] * 9
-        self.issue_type_clusters = {"pothole": [0, 1]}
+        self.issue_types_db = ["pothole", "pothole"]
         self.image_kmeans = None
         self.has_enough_data_for_xgboost = False
-        self.build_clusters_called = 0
 
     def process_json_input(self, payload: dict) -> dict:
         return {
@@ -32,10 +31,6 @@ class FakeDetector:
     def add_report(self, payload: dict) -> int:
         self.reports_db.append(payload)
         return len(self.reports_db) - 1
-
-    def build_clusters(self) -> None:
-        self.build_clusters_called += 1
-        self.image_kmeans = object()
 
 
 def create_client(detector: FakeDetector) -> TestClient:
@@ -65,7 +60,7 @@ def test_check_duplicate_maps_detector_response() -> None:
     assert body["similar_reports"][0]["id"] == "cmp-42"
 
 
-def test_add_report_rebuilds_clusters_every_tenth_report() -> None:
+def test_add_report_indexes_the_report() -> None:
     detector = FakeDetector()
     client = create_client(detector)
 
@@ -81,7 +76,7 @@ def test_add_report_rebuilds_clusters_every_tenth_report() -> None:
 
     assert response.status_code == 200
     assert response.json()["success"] is True
-    assert detector.build_clusters_called == 1
+    assert response.json()["index"] == 9
 
 
 def test_duplicate_stats_reflects_detector_state() -> None:

@@ -19,9 +19,10 @@ import uuid
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
-from config import UPLOAD_PATH
+from config import UPLOAD_PATH, get_settings
+from ml.pool import pool_for
+from ml.uploads import ensure_readable_video, save_video
 from models.schemas import TrafficAssessmentResponse, TrafficDetection, TrafficVideoAssessmentResponse
-from routers.stats import record_detection
 
 # NOTE: ml.traffic imports are deferred to function level so the router module
 # can be imported in lightweight environments (CI) where torch is not installed.
@@ -30,7 +31,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/detect/traffic", tags=["Traffic Detection"])
 
 MAX_IMAGE_SIZE = 20 * 1024 * 1024   # 20 MB
-MAX_VIDEO_SIZE = 200 * 1024 * 1024  # 200 MB (tracking needs full video)
+
+# model.track(persist=True) keeps tracker state on the shared model and Florence-2 OCR is shared,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -39,12 +41,12 @@ MAX_VIDEO_SIZE = 200 * 1024 * 1024  # 200 MB (tracking needs full video)
 
 
 @router.post("/image", response_model=TrafficAssessmentResponse)
-async def detect_traffic_image(
+def detect_traffic_image(
     request: Request,
     file: UploadFile = File(..., description="Image file (JPG, PNG, WEBP)"),
     conf_threshold: float = Form(0.25, ge=0.0, le=1.0, description="Confidence threshold. Default 0.25 tuned for best_traffic.pt."),
     include_annotated: bool = Form(True, description="Return base64 annotated image"),
-    run_ocr: bool = Form(True, description="Run EasyOCR on detected number plates (uses best_traffic.pt's improved plate boxes)"),
+    run_ocr: bool = Form(True, description="Read number plates with Florence-2 (only when OCR_ENABLED=true)"),
 ):
     """
     Detect traffic violations in a single image using best_traffic.pt.
@@ -81,7 +83,7 @@ async def detect_traffic_image(
         )
 
     # ── Read bytes ──
-    image_bytes = await file.read()
+    image_bytes = file.file.read(MAX_IMAGE_SIZE + 1)
     if len(image_bytes) > MAX_IMAGE_SIZE:
         raise HTTPException(
             status_code=413,
@@ -91,17 +93,20 @@ async def detect_traffic_image(
     # ── Run detection ──
     device = get_traffic_device()
 
-    result, annotated = assess_traffic_image(
-        image_bytes,
-        model=traffic_model,
-        conf_threshold=conf_threshold,
-        device=device,
-        return_annotated=include_annotated,
-        run_ocr=run_ocr,
-    )
+    with pool_for(request.app.state, "traffic_model").acquire() as pooled:
+        result, annotated = assess_traffic_image(
+            image_bytes,
+            model=pooled,
+            conf_threshold=conf_threshold,
+            device=device,
+            return_annotated=include_annotated,
+            run_ocr=run_ocr,
+        )
 
     if not result.get("success"):
-        raise HTTPException(status_code=500, detail=result.get("message", "Detection failed"))
+        message = result.get("message", "Detection failed")
+        # A file that isn't a readable image is the caller's mistake (400), not a server fault (500).
+        raise HTTPException(status_code=400 if "decode" in message.lower() else 500, detail=message)
 
     # ── Encode annotated image ──
     annotated_b64 = None
@@ -134,14 +139,6 @@ async def detect_traffic_image(
         message=result.get("message", ""),
     )
 
-    # Update session-scoped stats
-    record_detection(
-        engine="traffic",
-        total_detections=response.total_detections,
-        priority_counts=result.get("priority_counts", {}),
-        class_counts=result.get("class_counts", {}),
-    )
-
     return response
 
 
@@ -151,15 +148,16 @@ async def detect_traffic_image(
 
 
 @router.post("/video", response_model=TrafficVideoAssessmentResponse)
-async def detect_traffic_video(
+def detect_traffic_video(
     request: Request,
     file: UploadFile = File(..., description="Video file (MP4, AVI, MOV)"),
     conf_threshold: float = Form(0.25, ge=0.0, le=1.0, description="Confidence threshold. Default 0.25 tuned for best_traffic.pt."),
-    tracker: str = Form(
-        "bytetrack.yaml",
-        description='Tracker config: "bytetrack.yaml" or "botsort.yaml"',
+    tracker: str | None = Form(
+        None,
+        description='Tracker config: "bytetrack.yaml" or "botsort.yaml" (default: TRACKER setting)',
     ),
-    run_ocr: bool = Form(True, description="Run EasyOCR on detected number plates"),
+    run_ocr: bool = Form(True, description="Read number plates with Florence-2 (only when OCR_ENABLED=true)"),
+    frame_stride: int = Form(3, ge=1, le=30, description="Check every Nth frame (default 3: 10 checks a second at 30 fps)"),
 ):
     """
     Detect traffic violations across an entire video using object tracking.
@@ -192,6 +190,7 @@ async def detect_traffic_video(
             detail=f"Expected a video file (video/*), got: {content_type}",
         )
 
+    tracker = tracker or get_settings().TRACKER
     # Validate tracker choice
     allowed_trackers = {"bytetrack.yaml", "botsort.yaml"}
     if tracker not in allowed_trackers:
@@ -200,31 +199,26 @@ async def detect_traffic_video(
             detail=f"Invalid tracker '{tracker}'. Choose from: {sorted(allowed_trackers)}",
         )
 
-    video_bytes = await file.read()
-    if len(video_bytes) > MAX_VIDEO_SIZE:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Video too large. Maximum allowed size is {MAX_VIDEO_SIZE // (1024 * 1024)} MB.",
-        )
-
     # Save to temp file (Ultralytics tracker needs a file path)
     temp_filename = f"traffic_{uuid.uuid4().hex}.mp4"
     temp_path     = UPLOAD_PATH / temp_filename
 
     try:
-        with open(temp_path, "wb") as f:
-            f.write(video_bytes)
+        save_video(file.file, temp_path)
+        ensure_readable_video(temp_path)
 
         device = get_traffic_device()
 
-        result = assess_traffic_video(
-            str(temp_path),
-            model=traffic_model,
-            conf_threshold=conf_threshold,
-            device=device,
-            tracker=tracker,
-            run_ocr=run_ocr,
-        )
+        with pool_for(request.app.state, "traffic_model").acquire() as pooled:
+            result = assess_traffic_video(
+                str(temp_path),
+                model=pooled,
+                conf_threshold=conf_threshold,
+                device=device,
+                tracker=tracker,
+                run_ocr=run_ocr,
+                frame_stride=frame_stride,
+            )
 
         if not result.get("success"):
             raise HTTPException(
@@ -241,15 +235,6 @@ async def detect_traffic_video(
             violations=result.get("violations", []),
             summary=result.get("summary", {}),
             message=result.get("message", ""),
-        )
-
-        # Update session-scoped stats
-        summary = result.get("summary", {})
-        record_detection(
-            engine="traffic",
-            total_detections=response.total_detections,
-            priority_counts=summary.get("priority_counts", {}),
-            class_counts=summary.get("class_counts", {}),
         )
 
         return response
